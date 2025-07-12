@@ -436,14 +436,16 @@ class HackRFController:
             iq_data[0::2] = i_data
             iq_data[1::2] = q_data
             
-            # For looping, check if we need to repeat the signal
+            # For looping with hackrf_transfer -r flag, we need to calculate the right file size
+            # The file will be looped continuously, so we need to ensure the loop duration matches our needs
             if total_duration > signal_duration:
-                # Calculate how many copies we need to fill the total duration
-                copies_needed = int(total_duration / signal_duration) + 1
+                # Calculate how many copies we need so that when looped, we get the right total duration
+                # Since hackrf_transfer -r loops continuously, we want the file to be exactly the right size
+                copies_needed = max(1, int(total_duration / signal_duration))
                 
-                # Create a larger file with repeated signal data
+                # Create a file with the right number of copies
                 repeated_iq_data = np.tile(iq_data, copies_needed)
-                print(f"🔄 Looping signal: {copies_needed} copies for {total_duration:.1f}s total duration")
+                print(f"🔄 Creating loopable signal: {copies_needed} copies, will loop for {total_duration:.1f}s total")
             else:
                 # Use the signal as-is (no looping needed)
                 repeated_iq_data = iq_data
@@ -466,12 +468,13 @@ class HackRFController:
                     '-s', str(int(self.current_sample_rate)),  # sample rate
                     '-x', str(int(self.current_gain)),  # TX VGA gain
                     '-a', '1',  # enable TX amplifier
+                    '-R',  # repeat/loop the file continuously
                 ]
                 
                 print(f"Starting HackRF transmission: {' '.join(cmd)}")
                 print(f"Signal file size: {os.path.getsize(tmp_filename)} bytes")
                 if total_duration > signal_duration:
-                    print(f"Repeated signal: {copies_needed} copies for {total_duration:.1f}s total duration")
+                    print(f"Looping signal: {copies_needed} copies, continuous transmission for {total_duration:.1f}s")
                 else:
                     print(f"Single signal: {signal_duration:.1f}s duration")
                 
@@ -499,6 +502,7 @@ class HackRFController:
                     return
                 
                 # Monitor the process for the full duration
+                # With -r flag, hackrf_transfer will loop continuously until stopped
                 start_time = time.time()
                 while (time.time() - start_time < total_duration and 
                        self._hackrf_process.poll() is None and
