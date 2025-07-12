@@ -27,12 +27,15 @@ class HackRFController:
         self._stop_transmission = threading.Event()
         self._hackrf_process = None
         
+        # Initialize the device connection
+        self.initialize()
+        
     def initialize(self) -> bool:
         """Initialize HackRF device connection"""
         try:
             # Check if hackrf_transfer command is available
             try:
-                result = subprocess.run(['hackrf_transfer', '--help'], 
+                result = subprocess.run(['hackrf_transfer', '-h'], 
                                       capture_output=True, timeout=5)
                 hackrf_cmd_available = result.returncode == 0
             except:
@@ -166,8 +169,16 @@ class HackRFController:
             return False
     
     def start_transmission(self, signal_data: bytes, frequency: int, 
-                          sample_rate: int, gain: int) -> bool:
-        """Start signal transmission"""
+                          sample_rate: int, gain: int, duration: Optional[float] = None) -> bool:
+        """Start signal transmission with support for incremental/looping transmission
+        
+        Args:
+            signal_data: Signal data in bytes
+            frequency: Transmission frequency in Hz
+            sample_rate: Sample rate in Hz
+            gain: TX gain in dB
+            duration: Total transmission duration in seconds (None = use signal length)
+        """
         if not self.device_connected:
             return False
         
@@ -186,6 +197,18 @@ class HackRFController:
                 self.current_sample_rate = sample_rate
                 self.current_gain = gain
                 
+                # Calculate signal duration
+                signal_duration = len(signal_data) / (sample_rate * 2)  # 2 bytes per sample (I/Q)
+                
+                # If no duration specified, use signal duration
+                if duration is None:
+                    duration = signal_duration
+                else:
+                    duration = float(duration)
+                
+                # Check if we need looping (duration > signal duration)
+                needs_looping = duration > signal_duration
+                
                 # Check if we can use real HackRF transmission
                 try:
                     # Test if hackrf_transfer is available
@@ -199,36 +222,42 @@ class HackRFController:
                 
                 if can_transmit:
                     # Convert bytes back to complex samples for HackRF
-                    # The signal_data is uint8, convert to complex I/Q
                     samples_uint8 = np.frombuffer(signal_data, dtype=np.uint8)
-                    
-                    # Convert to complex I/Q (assuming interleaved I,Q format)
                     if len(samples_uint8) % 2 == 1:
-                        # Ensure even number of samples
                         samples_uint8 = samples_uint8[:-1]
+                    # Convert to complex I/Q (assuming interleaved I,Q format)
+                    i = samples_uint8[0::2].astype(np.float32)
+                    q = samples_uint8[1::2].astype(np.float32)
+                    samples = (i - 127) / 127.0 + 1j * ((q - 127) / 127.0)
                     
-                    # Reshape to I,Q pairs and convert to complex
-                    iq_samples = samples_uint8.reshape(-1, 2)
-                    i_samples = (iq_samples[:, 0].astype(np.float32) - 127.5) / 127.5
-                    q_samples = (iq_samples[:, 1].astype(np.float32) - 127.5) / 127.5
-                    complex_samples = i_samples + 1j * q_samples
+                    # Start transmission in separate thread
+                    if needs_looping:
+                        print("HackRF transfer available for looping transmission")
+                        self._transmission_thread = threading.Thread(
+                            target=self._transmit_with_hackrf_transfer_looping,
+                            args=(samples, duration, signal_duration, needs_looping)
+                        )
+                    else:
+                        self._transmission_thread = threading.Thread(
+                            target=self._transmit_with_hackrf_transfer,
+                            args=(samples,)
+                        )
                     
-                    # Start transmission thread
-                    self._stop_transmission.clear()
-                    self._transmission_thread = threading.Thread(
-                        target=self._transmit_samples, 
-                        args=(complex_samples,)
-                    )
                     self._transmission_thread.daemon = True
                     self._transmission_thread.start()
-                    
-                    print(f"HackRF transmission started at {frequency} Hz")
+                    print("HackRF transmission started at {} Hz".format(frequency))
                 else:
-                    # Simulation mode
-                    print(f"Transmission started at {frequency} Hz (simulation)")
+                    print("Simulation mode: would transmit {} samples at {} Hz".format(len(signal_data), frequency))
+                    # For simulation, just wait for the duration
+                    def simulate_transmission():
+                        time.sleep(duration)
+                        self.transmission_active = False
+                    
+                    self._transmission_thread = threading.Thread(target=simulate_transmission)
+                    self._transmission_thread.daemon = True
+                    self._transmission_thread.start()
                 
                 return True
-                
         except Exception as e:
             print(f"Error starting transmission: {e}")
             self.transmission_active = False
@@ -262,6 +291,38 @@ class HackRFController:
                 
         except Exception as e:
             print(f"Error during transmission: {e}")
+        finally:
+            # Always clear transmission active flag
+            self.transmission_active = False
+    
+    def _transmit_samples_with_looping(self, samples: np.ndarray, total_duration: float, 
+                                     signal_duration: float, needs_looping: bool) -> None:
+        """Transmit samples with looping support for longer durations"""
+        try:
+            # Check if hackrf_transfer is available
+            try:
+                result = subprocess.run(['hackrf_transfer', '-h'], 
+                             capture_output=True, timeout=2)
+                can_transmit = True
+                print("HackRF transfer available for looping transmission")
+            except Exception as e:
+                can_transmit = False
+                print(f"HackRF transfer not available for looping: {e}")
+            
+            if can_transmit:
+                # For real transmission with looping
+                self._transmit_with_hackrf_transfer_looping(samples, total_duration, signal_duration, needs_looping)
+            else:
+                # Simulation mode with looping
+                print(f"Simulating looping transmission for {total_duration:.2f} seconds...")
+                
+                start_time = time.time()
+                while (time.time() - start_time < total_duration and 
+                       not self._stop_transmission.is_set()):
+                    time.sleep(0.1)
+                
+        except Exception as e:
+            print(f"Error during looping transmission: {e}")
         finally:
             # Always clear transmission active flag
             self.transmission_active = False
@@ -314,6 +375,18 @@ class HackRFController:
                 
                 print(f"HackRF process started with PID: {self._hackrf_process.pid}")
                 
+                # Give process a moment to start properly
+                time.sleep(1.0)
+                
+                # Check if process is still running (didn't immediately fail)
+                if self._hackrf_process.poll() is None:
+                    print(f"✅ HackRF process running successfully - LED should be RED")
+                else:
+                    print(f"❌ HackRF process failed immediately - return code: {self._hackrf_process.returncode}")
+                    stdout, stderr = self._hackrf_process.communicate()
+                    if stderr:
+                        print(f"Error: {stderr}")
+                
                 # Monitor the process
                 while (self._hackrf_process.poll() is None and 
                        not self._stop_transmission.is_set()):
@@ -342,6 +415,125 @@ class HackRFController:
                 
         except Exception as e:
             print(f"Error in hackrf_transfer transmission: {e}")
+        finally:
+            # Always clear transmission active flag
+            self.transmission_active = False
+    
+    def _transmit_with_hackrf_transfer_looping(self, samples: np.ndarray, total_duration: float, 
+                                             signal_duration: float, needs_looping: bool) -> None:
+        """Use hackrf_transfer command for looping RF transmission"""
+        try:
+            # Convert complex samples to HackRF format (8-bit I/Q)
+            i_data = np.real(samples) * 127 + 127
+            q_data = np.imag(samples) * 127 + 127
+            
+            # Clip to valid range
+            i_data = np.clip(i_data, 0, 255).astype(np.uint8)
+            q_data = np.clip(q_data, 0, 255).astype(np.uint8)
+            
+            # Interleave I and Q
+            iq_data = np.empty(len(samples) * 2, dtype=np.uint8)
+            iq_data[0::2] = i_data
+            iq_data[1::2] = q_data
+            
+            # For looping, check if we need to repeat the signal
+            if total_duration > signal_duration:
+                # Calculate how many copies we need to fill the total duration
+                copies_needed = int(total_duration / signal_duration) + 1
+                
+                # Create a larger file with repeated signal data
+                repeated_iq_data = np.tile(iq_data, copies_needed)
+                print(f"🔄 Looping signal: {copies_needed} copies for {total_duration:.1f}s total duration")
+            else:
+                # Use the signal as-is (no looping needed)
+                repeated_iq_data = iq_data
+                print(f"📡 Using signal as-is: {signal_duration:.1f}s duration")
+            
+            # Save to temporary file
+            import tempfile
+            import os
+            
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.bin') as tmp_file:
+                tmp_file.write(repeated_iq_data.tobytes())
+                tmp_filename = tmp_file.name
+            
+            try:
+                # Build hackrf_transfer command for single long transmission
+                cmd = [
+                    'hackrf_transfer',
+                    '-t', tmp_filename,  # transmit from file
+                    '-f', str(int(self.current_frequency)),  # frequency
+                    '-s', str(int(self.current_sample_rate)),  # sample rate
+                    '-x', str(int(self.current_gain)),  # TX VGA gain
+                    '-a', '1',  # enable TX amplifier
+                ]
+                
+                print(f"Starting HackRF transmission: {' '.join(cmd)}")
+                print(f"Signal file size: {os.path.getsize(tmp_filename)} bytes")
+                if total_duration > signal_duration:
+                    print(f"Repeated signal: {copies_needed} copies for {total_duration:.1f}s total duration")
+                else:
+                    print(f"Single signal: {signal_duration:.1f}s duration")
+                
+                # Start hackrf_transfer process
+                self._hackrf_process = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True
+                )
+                
+                print(f"HackRF process started with PID: {self._hackrf_process.pid}")
+                
+                # Give process a moment to start properly
+                time.sleep(1.0)
+                
+                # Check if process is still running (didn't immediately fail)
+                if self._hackrf_process.poll() is None:
+                    print(f"✅ HackRF process running successfully - LED should be RED")
+                else:
+                    print(f"❌ HackRF process failed immediately - return code: {self._hackrf_process.returncode}")
+                    stdout, stderr = self._hackrf_process.communicate()
+                    if stderr:
+                        print(f"Error: {stderr}")
+                    return
+                
+                # Monitor the process for the full duration
+                start_time = time.time()
+                while (time.time() - start_time < total_duration and 
+                       self._hackrf_process.poll() is None and
+                       not self._stop_transmission.is_set()):
+                    time.sleep(0.1)
+                
+                # If stop was requested, terminate the process
+                if self._stop_transmission.is_set():
+                    print("Stop requested, terminating HackRF process")
+                    self._hackrf_process.terminate()
+                    self._hackrf_process.wait(timeout=5)
+                
+                # Get process output
+                stdout, stderr = self._hackrf_process.communicate()
+                print(f"HackRF transmission completed with return code: {self._hackrf_process.returncode}")
+                if stdout:
+                    print(f"STDOUT: {stdout}")
+                if stderr:
+                    print(f"STDERR: {stderr}")
+                
+                actual_duration = time.time() - start_time
+                print(f"✅ Looping transmission completed: {actual_duration:.1f}s total")
+                
+            finally:
+                # Clean up temporary file
+                try:
+                    os.unlink(tmp_filename)
+                except:
+                    pass
+                
+        except Exception as e:
+            print(f"Error in hackrf_transfer looping transmission: {e}")
+        finally:
+            # Always clear transmission active flag
+            self.transmission_active = False
     
     def stop_transmission(self) -> bool:
         """Stop signal transmission"""
@@ -372,13 +564,45 @@ class HackRFController:
     
     def generate_sine_wave(self, baseband_freq: float, duration: float, 
                           sample_rate: int = 2000000) -> bytes:
-        """Generate sine wave signal data
+        """Generate sine wave signal data with caching support
         
         Args:
             baseband_freq: Baseband frequency in Hz (e.g., 1000 for 1kHz tone)
             duration: Duration in seconds
             sample_rate: Sample rate in Hz
         """
+        # Use cache for sine wave signals
+        from .universal_signal_cache import get_universal_cache
+        cache = get_universal_cache()
+        
+        # Define parameters for caching
+        parameters = {
+            'frequency': baseband_freq,
+            'amplitude': 0.8,
+            'duration': duration
+        }
+        
+        # Define generator function
+        def generate_signal(frequency, amplitude, duration):
+            return self._generate_sine_wave_internal(frequency, duration, sample_rate)
+        
+        # Get from cache or generate
+        cached_path, actual_sample_rate = cache.get_or_generate_signal(
+            signal_type='modulation',
+            protocol='sine_wave',
+            parameters=parameters,
+            generator_func=generate_signal
+        )
+        
+        # Load cached signal
+        with open(cached_path, 'rb') as f:
+            signal_bytes = f.read()
+        
+        return signal_bytes
+    
+    def _generate_sine_wave_internal(self, baseband_freq: float, duration: float, 
+                                   sample_rate: int = 2000000) -> tuple:
+        """Internal method to generate sine wave (called by cache)"""
         num_samples = int(duration * sample_rate)
         t = np.linspace(0, duration, num_samples, False)
         
@@ -400,7 +624,7 @@ class HackRFController:
         iq_data[0::2] = i_data
         iq_data[1::2] = q_data
         
-        return iq_data.tobytes()
+        return iq_data.tobytes(), sample_rate
     
     def generate_fm_signal(self, carrier_freq: float, mod_freq: float, 
                           mod_depth: float, duration: float, 

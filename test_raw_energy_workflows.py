@@ -151,7 +151,8 @@ def show_frequency_coverage():
     print(f"  • Configurable noise types: white, pink, shaped, chirp, multitone")
     print(f"  • Bandwidth-limited filtering")
     print(f"  • All major RF bands covered: VHF, UHF, SHF")
-    print(f"  • ELRS, GPS, ADS-B, AIS frequencies included")
+    print(f"  • GPS, ADS-B, AIS frequencies included")
+    print(f"  • ELRS now uses advanced frequency sweeping (see ELRS Jamming workflows)")
 
 
 def show_usage_examples():
@@ -168,10 +169,10 @@ def show_usage_examples():
             'purpose': 'Test GPS receiver robustness'
         },
         {
-            'name': 'ELRS 915MHz Interference (10MHz)',
-            'workflow': 'raw_energy_elrs_915_ch5_10mhz',
-            'frequency': '911.4 MHz',
-            'purpose': 'Test ELRS system interference tolerance'
+            'name': 'AIS Channel Testing (5MHz)',
+            'workflow': 'raw_energy_ais_ch1_5mhz',
+            'frequency': '161.975 MHz',
+            'purpose': 'Test AIS receiver interference tolerance'
         },
         {
             'name': 'ADS-B Signal Analysis (5MHz)',

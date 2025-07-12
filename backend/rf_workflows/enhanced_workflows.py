@@ -9,6 +9,9 @@ import time
 import threading
 from typing import Dict, Any, List, Optional
 from .elrs_protocol import ELRSProtocol
+from .elrs_jamming_protocol import ELRSJammingProtocol, ELRSJammingConfig
+from .drone_video_jamming_protocol import DroneVideoJammingProtocol, DroneVideoJammingConfig
+from .universal_signal_cache import initialize_universal_cache, get_universal_cache
 from .gps_protocol import GPSProtocol
 from .adsb_protocol import ADSBProtocol, Aircraft
 from .raw_energy_protocol import RawEnergyProtocol
@@ -32,6 +35,20 @@ class EnhancedWorkflows:
             '2400': ELRSProtocol('2400')
         }
         
+        # Initialize ELRS jamming protocols with HackRF controller reference
+        self.elrs_jamming_protocols = {
+            '433': ELRSJammingProtocol('433', hackrf_controller),
+            '868': ELRSJammingProtocol('868', hackrf_controller),
+            '915': ELRSJammingProtocol('915', hackrf_controller),
+            '2400': ELRSJammingProtocol('2400', hackrf_controller)
+        }
+        
+        # Initialize drone video jamming protocols with HackRF controller reference
+        self.drone_video_jamming_protocols = {
+            '1200': DroneVideoJammingProtocol('1200', hackrf_controller),
+            '5800': DroneVideoJammingProtocol('5800', hackrf_controller)
+        }
+        
         self.gps_protocols = {
             'L1': GPSProtocol('L1'),
             'L2': GPSProtocol('L2'),
@@ -42,6 +59,10 @@ class EnhancedWorkflows:
         
         # Initialize raw energy protocol
         self.raw_energy_protocol = RawEnergyProtocol()
+        
+        # Initialize universal signal cache for instant transmission
+        print("🚀 Initializing universal signal cache...")
+        initialize_universal_cache()
     
     def get_available_workflows(self) -> List[Dict[str, Any]]:
         """Get comprehensive list of enhanced RF workflows"""
@@ -107,6 +128,286 @@ class EnhancedWorkflows:
                         'default': 30,
                         'unit': 's',
                         'description': 'Transmission duration'
+                    }
+                }
+            }
+            workflows.append(workflow)
+        
+        # ELRS Jamming workflows with frequency sweeping
+        for band in ['433', '868', '915', '2400']:
+            jammer = self.elrs_jamming_protocols[band]
+            band_info = jammer.get_band_info()
+            recommendations = jammer.get_jamming_recommendations()
+            band_rec = recommendations.get(band, recommendations['915'])
+            
+            # Frequency Sweeping Jammer
+            workflow = {
+                'name': f'elrs_{band}_freq_sweep_jammer',
+                'display_name': f'ELRS {band}MHz Frequency Sweeping Jammer',
+                'description': f'Advanced frequency sweeping jammer for ELRS {band}MHz band. Mimics real ELRS hopping patterns across {len(band_info["channels"])} channels for maximum effectiveness.',
+                'category': 'ELRS Jamming',
+                'complexity': 'High',
+                'parameters': {
+                    'sweep_pattern': {
+                        'type': 'select',
+                        'options': ['sequential', 'pseudorandom', 'adaptive', 'burst'],
+                        'default': band_rec['pattern'],
+                        'description': 'Frequency hopping pattern - pseudorandom mimics real ELRS behavior'
+                    },
+                    'hop_rate': {
+                        'type': 'int',
+                        'min': 10,
+                        'max': 1000,
+                        'default': band_rec['hop_rate'],
+                        'unit': 'Hz',
+                        'description': 'Channel switching rate - higher is more effective'
+                    },
+                    'power_level': {
+                        'type': 'int',
+                        'min': 0,
+                        'max': 47,
+                        'default': band_rec['power'],
+                        'unit': 'dBm',
+                        'description': 'Jamming power level'
+                    },
+                    'dwell_time': {
+                        'type': 'float',
+                        'min': 0.001,
+                        'max': 0.1,
+                        'default': 1.0 / band_rec['hop_rate'],
+                        'unit': 's',
+                        'description': 'Time to spend on each channel'
+                    },
+                    'bandwidth_multiplier': {
+                        'type': 'float',
+                        'min': 0.5,
+                        'max': 3.0,
+                        'default': 1.5,
+                        'description': 'Bandwidth multiplier per channel (wider = more effective)'
+                    },
+                    'duration': {
+                        'type': 'float',
+                        'min': 1.0,
+                        'max': 3600,
+                        'default': 60,
+                        'unit': 's',
+                        'description': 'Jamming duration'
+                    }
+                }
+            }
+            workflows.append(workflow)
+            
+            # Barrage Jammer (simultaneous multi-channel)
+            workflow = {
+                'name': f'elrs_{band}_barrage_jammer',
+                'display_name': f'ELRS {band}MHz Barrage Jammer',
+                'description': f'Simultaneous multi-channel barrage jammer covering all {len(band_info["channels"])} ELRS {band}MHz channels at once for maximum disruption.',
+                'category': 'ELRS Jamming',
+                'complexity': 'Very High',
+                'parameters': {
+                    'power_level': {
+                        'type': 'int',
+                        'min': 0,
+                        'max': 47,
+                        'default': 47,  # MAXIMUM power per channel
+                        'unit': 'dBm',
+                        'description': 'Maximum power level per channel'
+                    },
+                    'coverage_strategy': {
+                        'type': 'select',
+                        'options': ['full_band', 'hotspots', 'center_focus'],
+                        'default': 'full_band',
+                        'description': 'Channel coverage strategy'
+                    },
+                    'jamming_type': {
+                        'type': 'select',
+                        'options': ['broadband_noise', 'multitone', 'pulsed_noise'],
+                        'default': 'broadband_noise',
+                        'description': 'Type of jamming signal'
+                    },
+                    'duration': {
+                        'type': 'float',
+                        'min': 1.0,
+                        'max': 3600,
+                        'default': 30,
+                        'unit': 's',
+                        'description': 'Jamming duration'
+                    }
+                }
+            }
+            workflows.append(workflow)
+            
+            # Adaptive Jammer (responds to traffic)
+            workflow = {
+                'name': f'elrs_{band}_adaptive_jammer',
+                'display_name': f'ELRS {band}MHz Adaptive Jammer',
+                'description': f'Intelligent adaptive jammer that monitors ELRS {band}MHz traffic and focuses jamming on active channels with real-time pattern adaptation.',
+                'category': 'ELRS Jamming',
+                'complexity': 'Very High',
+                'parameters': {
+                    'monitoring_sensitivity': {
+                        'type': 'float',
+                        'min': -80,
+                        'max': -40,
+                        'default': -60,
+                        'unit': 'dBm',
+                        'description': 'Signal detection threshold'
+                    },
+                    'adaptation_speed': {
+                        'type': 'select',
+                        'options': ['slow', 'medium', 'fast', 'real_time'],
+                        'default': 'medium',
+                        'description': 'How quickly to adapt to traffic changes'
+                    },
+                    'focus_channels': {
+                        'type': 'int',
+                        'min': 1,
+                        'max': len(band_info["channels"]),
+                        'default': 5,
+                        'description': 'Number of high-priority channels to focus on'
+                    },
+                    'power_boost': {
+                        'type': 'int',
+                        'min': 0,
+                        'max': 10,
+                        'default': 3,
+                        'unit': 'dB',
+                        'description': 'Extra power for high-traffic channels'
+                    },
+                    'duration': {
+                        'type': 'float',
+                        'min': 10.0,
+                        'max': 3600,
+                        'default': 120,
+                        'unit': 's',
+                        'description': 'Monitoring and jamming duration'
+                    }
+                }
+            }
+            workflows.append(workflow)
+        
+        # Drone Video Link Jamming workflows
+        for band in ['1200', '5800']:
+            jammer = self.drone_video_jamming_protocols[band]
+            band_info = jammer.get_band_info()
+            recommendations = jammer.get_jamming_recommendations()
+            band_rec = recommendations.get(band, recommendations['5800'])
+            
+            # Video Link Frequency Sweeping Jammer
+            workflow = {
+                'name': f'drone_video_{band}_freq_sweep_jammer',
+                'display_name': f'Drone Video {band_info["name"]} Frequency Jammer',
+                'description': f'Advanced frequency jamming for {band_info["name"]}. Disrupts FPV video transmission across {len(band_info["channels"])} channels with maximum power.',
+                'category': 'Drone Video Jamming',
+                'complexity': 'High',
+                'parameters': {
+                    'sweep_pattern': {
+                        'type': 'select',
+                        'options': ['sequential', 'pseudorandom', 'adaptive', 'burst', 'race_focus'],
+                        'default': band_rec['pattern'],
+                        'description': 'Video jamming pattern strategy'
+                    },
+                    'hop_rate': {
+                        'type': 'int',
+                        'min': 10,
+                        'max': 400,
+                        'default': band_rec['hop_rate'],
+                        'unit': 'Hz',
+                        'description': 'Channel hopping rate'
+                    },
+                    'power_level': {
+                        'type': 'int',
+                        'min': 0,
+                        'max': 47,
+                        'default': 47,  # MAXIMUM power
+                        'unit': 'dBm',
+                        'description': 'Maximum power level'
+                    },
+                    'duration': {
+                        'type': 'float',
+                        'min': 1.0,
+                        'max': 3600,
+                        'default': 60,
+                        'unit': 's',
+                        'description': 'Jamming duration'
+                    }
+                }
+            }
+            workflows.append(workflow)
+            
+            # Video Link Barrage Jammer
+            workflow = {
+                'name': f'drone_video_{band}_barrage_jammer',
+                'display_name': f'Drone Video {band_info["name"]} Barrage Jammer',
+                'description': f'Rapid-fire barrage jammer for {band_info["name"]}. Cycles through all {len(band_info["channels"])} video channels with maximum disruption power.',
+                'category': 'Drone Video Jamming',
+                'complexity': 'Very High',
+                'parameters': {
+                    'power_level': {
+                        'type': 'int',
+                        'min': 0,
+                        'max': 47,
+                        'default': 47,  # MAXIMUM power
+                        'unit': 'dBm',
+                        'description': 'Maximum power level per channel'
+                    },
+                    'coverage_strategy': {
+                        'type': 'select',
+                        'options': ['full_band', 'race_focus', 'adaptive'],
+                        'default': 'race_focus' if band == '5800' else 'full_band',
+                        'description': 'Video channel coverage strategy'
+                    },
+                    'duration': {
+                        'type': 'float',
+                        'min': 1.0,
+                        'max': 3600,
+                        'default': 30,
+                        'unit': 's',
+                        'description': 'Jamming duration'
+                    }
+                }
+            }
+            workflows.append(workflow)
+            
+            # Single Channel Video Jammer
+            workflow = {
+                'name': f'drone_video_{band}_single_channel_jammer',
+                'display_name': f'Drone Video {band_info["name"]} Single Channel Jammer',
+                'description': f'Target specific video channel for {band_info["name"]}. Select from {len(band_info["channels"])} available channels for precise jamming with selectable bandwidth.',
+                'category': 'Drone Video Jamming',
+                'complexity': 'Medium',
+                'parameters': {
+                    'target_channel': {
+                        'type': 'select',
+                        'options': [{'value': i, 'label': f'{jammer._get_channel_name(freq)} ({freq/1e6:.1f} MHz)'} 
+                                  for i, freq in enumerate(band_info["channels"])],
+                        'default': 0,
+                        'description': 'Select specific video channel to jam (center frequency)'
+                    },
+                    'bandwidth': {
+                        'type': 'select',
+                        'options': [
+                            {'value': 5000000, 'label': '5 MHz'},
+                            {'value': 10000000, 'label': '10 MHz'}
+                        ],
+                        'default': 10000000,
+                        'description': 'Jamming bandwidth - 10 MHz covers full video feed'
+                    },
+                    'power_level': {
+                        'type': 'int',
+                        'min': 0,
+                        'max': 47,
+                        'default': 47,  # MAXIMUM power
+                        'unit': 'dBm',
+                        'description': 'Jamming power level'
+                    },
+                    'duration': {
+                        'type': 'float',
+                        'min': 1.0,
+                        'max': 3600,
+                        'default': 30,
+                        'unit': 's',
+                        'description': 'Jamming duration'
                     }
                 }
             }
@@ -430,6 +731,10 @@ class EnhancedWorkflows:
             
             if workflow_name.startswith('elrs_') and workflow_name.endswith('_enhanced'):
                 self._run_enhanced_elrs(workflow_name, parameters)
+            elif workflow_name.startswith('elrs_') and '_jammer' in workflow_name:
+                self._run_elrs_jammer(workflow_name, parameters)
+            elif workflow_name.startswith('drone_video_') and '_jammer' in workflow_name:
+                self._run_drone_video_jammer(workflow_name, parameters)
             elif workflow_name.startswith('gps_') and workflow_name.endswith('_constellation'):
                 self._run_enhanced_gps(workflow_name, parameters)
             elif workflow_name == 'adsb_airspace_simulation':
@@ -484,12 +789,12 @@ class EnhancedWorkflows:
         signal_8bit = ((signal_data + 1) * 127.5).astype(np.uint8)
         signal_bytes = signal_8bit.tobytes()
         
-        # Configure and start transmission
+        # Configure and start transmission with duration for looping support
         self.hackrf.set_frequency(int(frequency))
         self.hackrf.set_sample_rate(2000000)
         self.hackrf.set_gain(47)
         
-        self.hackrf.start_transmission(signal_bytes, int(frequency), 2000000, 47)
+        self.hackrf.start_transmission(signal_bytes, int(frequency), 2000000, 47, duration)
         
         # Wait for completion
         start_time = time.time()
@@ -498,8 +803,221 @@ class EnhancedWorkflows:
         
         self.hackrf.stop_transmission()
     
+    def _run_elrs_jammer(self, workflow_name: str, parameters: Dict[str, Any]) -> None:
+        """Run ELRS jamming workflow with frequency sweeping"""
+        # Extract band and jammer type from workflow name
+        # Format: elrs_{band}_{jammer_type}_jammer
+        parts = workflow_name.split('_')
+        band = parts[1]
+        jammer_type = '_'.join(parts[2:-1])  # Everything between band and 'jammer'
+        
+        jammer_protocol = self.elrs_jamming_protocols[band]
+        band_info = jammer_protocol.get_band_info()
+        
+        # Common parameters - MAXIMUM POWER
+        power_level = parameters.get('power_level', 47)  # Default to maximum HackRF gain
+        duration = parameters.get('duration', 60)
+        
+        print(f"Starting ELRS {band}MHz {jammer_type.replace('_', ' ')} jammer...")
+        print(f"- Band: {band}MHz ({len(band_info['channels'])} channels)")
+        print(f"- Power: {power_level} dBm")
+        print(f"- Duration: {duration}s")
+        
+        if jammer_type == 'freq_sweep':
+            # Frequency sweeping jammer
+            sweep_pattern = parameters.get('sweep_pattern', 'pseudorandom')
+            hop_rate = parameters.get('hop_rate', 100)
+            # Ensure minimum dwell time for HackRF process startup (minimum 500ms)
+            calculated_dwell = 1.0 / hop_rate
+            dwell_time = max(0.5, calculated_dwell)  # Force minimum 500ms, ignore parameters
+            bandwidth_multiplier = parameters.get('bandwidth_multiplier', 1.5)
+            
+            config = ELRSJammingConfig(
+                band=band,
+                channels=band_info['channels'],
+                hop_rate=hop_rate,
+                sweep_pattern=sweep_pattern,
+                power_level=power_level,
+                bandwidth_per_hop=band_info['bandwidth'] * bandwidth_multiplier,
+                dwell_time=dwell_time,
+                coverage_strategy='frequency_sweeping'
+            )
+            
+            print(f"- Pattern: {sweep_pattern}")
+            print(f"- Hop rate: {hop_rate} Hz (adjusted for HackRF)")
+            print(f"- Dwell time: {dwell_time:.1f}s per channel")
+            
+            jammer_protocol.start_frequency_sweeping_jammer(config, duration)
+            
+        elif jammer_type == 'barrage':
+            # Barrage jammer (simultaneous multi-channel)
+            coverage_strategy = parameters.get('coverage_strategy', 'full_band')
+            jamming_type = parameters.get('jamming_type', 'broadband_noise')
+            
+            config = ELRSJammingConfig(
+                band=band,
+                channels=band_info['channels'],
+                hop_rate=0,  # Not used for barrage
+                sweep_pattern='barrage',
+                power_level=power_level,
+                bandwidth_per_hop=band_info['bandwidth'],
+                dwell_time=1.0,
+                coverage_strategy=coverage_strategy
+            )
+            
+            print(f"- Coverage: {coverage_strategy}")
+            print(f"- Jamming type: {jamming_type}")
+            print(f"- Simultaneous channels: {len(band_info['channels'])}")
+            
+            jammer_protocol.start_barrage_jammer(config, duration)
+            
+        elif jammer_type == 'adaptive':
+            # Adaptive jammer (responds to traffic)
+            monitoring_sensitivity = parameters.get('monitoring_sensitivity', -60)
+            adaptation_speed = parameters.get('adaptation_speed', 'medium')
+            focus_channels = parameters.get('focus_channels', 5)
+            power_boost = parameters.get('power_boost', 3)
+            
+            config = ELRSJammingConfig(
+                band=band,
+                channels=band_info['channels'],
+                hop_rate=50,  # Monitoring rate
+                sweep_pattern='adaptive',
+                power_level=power_level,
+                bandwidth_per_hop=band_info['bandwidth'] * 2,  # Wider for focused jamming
+                dwell_time=0.02,  # 20ms per scan
+                coverage_strategy='follow_traffic'
+            )
+            
+            print(f"- Monitoring sensitivity: {monitoring_sensitivity} dBm")
+            print(f"- Adaptation speed: {adaptation_speed}")
+            print(f"- Focus channels: {focus_channels}")
+            print(f"- Power boost: +{power_boost} dB for active channels")
+            
+            jammer_protocol.start_adaptive_jammer(config, duration)
+            
+        else:
+            raise ValueError(f"Unknown ELRS jammer type: {jammer_type}")
+        
+        # Wait for jamming duration with cleaner status updates
+        start_time = time.time()
+        last_status_time = 0
+        print(f"🔥 MAX POWER jamming started on {len(band_info['channels'])} channels @ 47dBm")
+        
+        while time.time() - start_time < duration and not self.stop_flag.is_set():
+            time.sleep(1.0)  # Check every second
+            
+            # Print status update every 10 seconds
+            elapsed = int(time.time() - start_time)
+            if elapsed > 0 and elapsed % 10 == 0 and elapsed != last_status_time:
+                remaining = duration - elapsed
+                print(f"ELRS {band}MHz {jammer_type.replace('_', ' ')} jammer: {elapsed}s elapsed, {remaining:.0f}s remaining")
+                last_status_time = elapsed
+        
+        # Stop the jammer
+        jammer_protocol.stop_all_jammers()
+        print(f"ELRS {band}MHz {jammer_type} jammer stopped")
+    
+    def _run_drone_video_jammer(self, workflow_name: str, parameters: Dict[str, Any]) -> None:
+        """Run drone video jamming workflow with frequency sweeping"""
+        # Extract band and jammer type from workflow name
+        # Format: drone_video_{band}_{jammer_type}_jammer
+        parts = workflow_name.split('_')
+        band = parts[2]  # drone_video_{band}_...
+        jammer_type = '_'.join(parts[3:-1])  # Everything between band and 'jammer'
+        
+        jammer_protocol = self.drone_video_jamming_protocols[band]
+        band_info = jammer_protocol.get_band_info()
+        
+        # Common parameters - MAXIMUM POWER for video disruption
+        power_level = parameters.get('power_level', 47)  # Default to maximum HackRF gain
+        duration = parameters.get('duration', 60)
+        
+        print(f"Starting {band_info['name']} {jammer_type.replace('_', ' ')} jammer...")
+        print(f"- Band: {band_info['name']} ({len(band_info['channels'])} channels)")
+        print(f"- Power: {power_level} dBm")
+        print(f"- Duration: {duration}s")
+        
+        if jammer_type == 'freq_sweep':
+            # Video frequency sweeping jammer
+            sweep_pattern = parameters.get('sweep_pattern', 'race_focus')
+            hop_rate = parameters.get('hop_rate', 200)
+            
+            config = DroneVideoJammingConfig(
+                band=band,
+                channels=band_info['channels'],
+                hop_rate=hop_rate,
+                sweep_pattern=sweep_pattern,
+                power_level=power_level,
+                bandwidth_per_hop=band_info['bandwidth'],
+                dwell_time=1.0 / hop_rate,
+                coverage_strategy='frequency_sweeping'
+            )
+            
+            print(f"- Pattern: {sweep_pattern}")
+            print(f"- Hop rate: {hop_rate} Hz")
+            
+            jammer_protocol.start_video_jamming(config, duration)
+            
+        elif jammer_type == 'barrage':
+            # Video barrage jammer (rapid multi-channel)
+            coverage_strategy = parameters.get('coverage_strategy', 'race_focus')
+            
+            config = DroneVideoJammingConfig(
+                band=band,
+                channels=band_info['channels'],
+                hop_rate=0,  # Not used for barrage
+                sweep_pattern='barrage',
+                power_level=power_level,
+                bandwidth_per_hop=band_info['bandwidth'],
+                dwell_time=0.1,  # 100ms per channel for video barrage
+                coverage_strategy=coverage_strategy
+            )
+            
+            print(f"- Coverage: {coverage_strategy}")
+            print(f"- Video channels: {len(band_info['channels'])}")
+            
+            jammer_protocol.start_video_barrage_jammer(config, duration)
+            
+        elif jammer_type == 'single_channel':
+            # Single channel video jammer
+            target_channel = parameters.get('target_channel', 0)
+            bandwidth = parameters.get('bandwidth', 10000000)
+            
+            if target_channel < 0 or target_channel >= len(band_info['channels']):
+                raise ValueError(f"Invalid target channel {target_channel}. Must be 0-{len(band_info['channels'])-1}")
+            
+            target_frequency = band_info['channels'][target_channel]
+            channel_name = jammer_protocol._get_channel_name(target_frequency)
+            
+            print(f"- Target channel: {target_channel} ({channel_name})")
+            print(f"- Center frequency: {target_frequency/1e6:.1f} MHz")
+            print(f"- Bandwidth: {bandwidth/1e6:.1f} MHz")
+            
+            jammer_protocol.start_single_channel_jammer(target_frequency, duration, power_level, bandwidth, 'video_noise')
+            
+        else:
+            raise ValueError(f"Unknown drone video jammer type: {jammer_type}")
+        
+        # Wait for jamming duration
+        start_time = time.time()
+        print(f"🎥 MAX POWER video jamming started on {len(band_info['channels'])} channels @ 47dBm")
+        
+        while time.time() - start_time < duration and not self.stop_flag.is_set():
+            time.sleep(1.0)  # Check every second
+            
+            # Progress update every 10 seconds
+            elapsed = time.time() - start_time
+            if elapsed > 0 and int(elapsed) % 10 == 0:
+                remaining = duration - elapsed
+                print(f"🎥 Video jamming progress: {elapsed:.0f}s elapsed, {remaining:.0f}s remaining")
+        
+        # Don't call stop_jamming() here - let the protocol manage its own duration
+        # The protocol will stop automatically when its duration is complete
+        print(f"✅ Drone video jamming complete after {time.time() - start_time:.1f}s")
+    
     def _run_enhanced_gps(self, workflow_name: str, parameters: Dict[str, Any]) -> None:
-        """Run enhanced GPS constellation workflow"""
+        """Run enhanced GPS constellation workflow using cached signals"""
         # Extract band from workflow name
         band = workflow_name.split('_')[1].upper()
         protocol = self.gps_protocols[band]
@@ -511,31 +1029,54 @@ class EnhancedWorkflows:
         satellite_count = parameters.get('satellite_count', 8)
         duration = parameters.get('duration', 60)
         
-        print(f"Generating realistic GPS {band} constellation...")
+        print(f"Loading cached GPS {band} constellation...")
         print(f"- {satellite_count} satellites")
         print(f"- Navigation data included")
         print(f"- Doppler effects simulated")
         
-        # Get satellite list (use first N satellites)
-        satellite_info = protocol.get_satellite_info()
-        include_satellites = [sat['svid'] for sat in satellite_info[:satellite_count]]
+        # Use universal cache for GPS signals
+        from .universal_signal_cache import get_universal_cache
+        cache = get_universal_cache()
         
-        # Generate GPS signal
-        signal_data = protocol.generate_gps_signal(
-            duration=duration,
-            include_satellites=include_satellites
+        # Define parameters for caching
+        parameters_cache = {
+            'band': band,
+            'num_satellites': satellite_count,
+            'duration': duration
+        }
+        
+        # Define generator function
+        def generate_signal(band, num_satellites, duration):
+            # Get satellite list (use first N satellites)
+            satellite_info = protocol.get_satellite_info()
+            include_satellites = [sat['svid'] for sat in satellite_info[:num_satellites]]
+            
+            return protocol.generate_gps_signal(
+                duration=duration,
+                include_satellites=include_satellites
+            )
+        
+        # Get from cache or generate
+        cached_path, sample_rate = cache.get_or_generate_signal(
+            signal_type='gps',
+            protocol=f'gps_{band.lower()}',
+            parameters=parameters_cache,
+            generator_func=generate_signal
         )
         
-        # Convert to bytes for HackRF
-        signal_8bit = ((signal_data + 1) * 127.5).astype(np.uint8)
-        signal_bytes = signal_8bit.tobytes()
+        # Load cached signal
+        with open(cached_path, 'rb') as f:
+            signal_bytes = f.read()
         
-        # Configure and start transmission
+        # Convert to numpy array
+        signal_data = np.frombuffer(signal_bytes, dtype=np.int8).astype(np.float32) / 127.0
+        
+        # Configure and start transmission with duration for looping support
         self.hackrf.set_frequency(int(frequency))
-        self.hackrf.set_sample_rate(2000000)
+        self.hackrf.set_sample_rate(int(sample_rate))
         self.hackrf.set_gain(47)
         
-        self.hackrf.start_transmission(signal_bytes, int(frequency), 2000000, 47)
+        self.hackrf.start_transmission(signal_bytes, int(frequency), int(sample_rate), 47, duration)
         
         # Wait for completion
         start_time = time.time()
@@ -545,7 +1086,7 @@ class EnhancedWorkflows:
         self.hackrf.stop_transmission()
     
     def _run_enhanced_adsb(self, parameters: Dict[str, Any]) -> None:
-        """Run enhanced ADS-B airspace simulation"""
+        """Run enhanced ADS-B airspace simulation using cached signals"""
         frequency = parameters.get('frequency')
         if frequency is None:
             raise ValueError("Frequency parameter is required")
@@ -554,27 +1095,49 @@ class EnhancedWorkflows:
         duration = parameters.get('duration', 120)
         transmission_rate = parameters.get('transmission_rate', 1.0)
         
-        print(f"Generating realistic ADS-B airspace simulation...")
+        print(f"Loading cached ADS-B airspace simulation...")
         print(f"- {aircraft_count} aircraft")
         print(f"- Mode S Extended Squitter format")
         print(f"- Dynamic flight simulation")
         
-        # Set transmission interval
-        self.adsb_protocol.transmission_interval = transmission_rate
+        # Use universal cache for ADS-B signals
+        from .universal_signal_cache import get_universal_cache
+        cache = get_universal_cache()
         
-        # Generate ADS-B signal
-        signal_data = self.adsb_protocol.generate_adsb_transmission(duration)
+        # Define parameters for caching
+        parameters_cache = {
+            'num_aircraft': aircraft_count,
+            'duration': duration
+        }
         
-        # Convert to bytes for HackRF
-        signal_8bit = ((signal_data + 1) * 127.5).astype(np.uint8)
-        signal_bytes = signal_8bit.tobytes()
+        # Define generator function
+        def generate_signal(num_aircraft, duration):
+            # Set transmission interval
+            self.adsb_protocol.transmission_interval = transmission_rate
+            
+            return self.adsb_protocol.generate_adsb_transmission(duration)
         
-        # Configure and start transmission
+        # Get from cache or generate
+        cached_path, sample_rate = cache.get_or_generate_signal(
+            signal_type='adsb',
+            protocol='adsb_1090',
+            parameters=parameters_cache,
+            generator_func=generate_signal
+        )
+        
+        # Load cached signal
+        with open(cached_path, 'rb') as f:
+            signal_bytes = f.read()
+        
+        # Convert to numpy array
+        signal_data = np.frombuffer(signal_bytes, dtype=np.int8).astype(np.float32) / 127.0
+        
+        # Configure and start transmission with duration for looping support
         self.hackrf.set_frequency(int(frequency))
-        self.hackrf.set_sample_rate(2000000)
+        self.hackrf.set_sample_rate(int(sample_rate))
         self.hackrf.set_gain(47)
         
-        self.hackrf.start_transmission(signal_bytes, int(frequency), 2000000, 47)
+        self.hackrf.start_transmission(signal_bytes, int(frequency), int(sample_rate), 47, duration)
         
         # Wait for completion
         start_time = time.time()
@@ -726,8 +1289,8 @@ class EnhancedWorkflows:
         self.hackrf.set_sample_rate(2000000)
         self.hackrf.set_gain(47)  # Maximum HackRF gain
         
-        # Start transmission
-        self.hackrf.start_transmission(signal_bytes, int(frequency), 2000000, 47)
+        # Start transmission with duration for looping support
+        self.hackrf.start_transmission(signal_bytes, int(frequency), 2000000, 47, duration)
         
         # Wait for completion
         start_time = time.time()

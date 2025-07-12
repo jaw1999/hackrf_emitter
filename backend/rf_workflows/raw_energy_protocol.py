@@ -24,30 +24,6 @@ class RawEnergyProtocol:
         'AIS_CH1': 161.975e6,      # AIS Channel 1
         'AIS_CH2': 162.025e6,      # AIS Channel 2
         
-        # ELRS 433MHz band
-        'ELRS_433_CH1': 433.42e6,  # ELRS 433 MHz Channel 1
-        'ELRS_433_CH2': 434.42e6,  # ELRS 433 MHz Channel 2
-        'ELRS_433_CH3': 435.42e6,  # ELRS 433 MHz Channel 3
-        
-        # ELRS 868MHz band
-        'ELRS_868_CH1': 868.1e6,   # ELRS 868 MHz Channel 1
-        'ELRS_868_CH2': 868.3e6,   # ELRS 868 MHz Channel 2
-        'ELRS_868_CH3': 868.5e6,   # ELRS 868 MHz Channel 3
-        'ELRS_868_CH4': 868.7e6,   # ELRS 868 MHz Channel 4
-        'ELRS_868_CH5': 868.9e6,   # ELRS 868 MHz Channel 5
-        
-        # ELRS 915MHz band
-        'ELRS_915_CH1': 903.4e6,   # ELRS 915 MHz Channel 1
-        'ELRS_915_CH2': 905.4e6,   # ELRS 915 MHz Channel 2
-        'ELRS_915_CH3': 907.4e6,   # ELRS 915 MHz Channel 3
-        'ELRS_915_CH4': 909.4e6,   # ELRS 915 MHz Channel 4
-        'ELRS_915_CH5': 911.4e6,   # ELRS 915 MHz Channel 5
-        'ELRS_915_CH6': 913.4e6,   # ELRS 915 MHz Channel 6
-        'ELRS_915_CH7': 915.4e6,   # ELRS 915 MHz Channel 7
-        'ELRS_915_CH8': 917.4e6,   # ELRS 915 MHz Channel 8
-        'ELRS_915_CH9': 919.4e6,   # ELRS 915 MHz Channel 9
-        'ELRS_915_CH10': 921.4e6,  # ELRS 915 MHz Channel 10
-        
         # ADS-B frequency
         'ADSB': 1090e6,            # ADS-B 1090 MHz
         
@@ -55,17 +31,6 @@ class RawEnergyProtocol:
         'GPS_L5': 1176.45e6,       # GPS L5
         'GPS_L2': 1227.60e6,       # GPS L2
         'GPS_L1': 1575.42e6,       # GPS L1
-        
-        # ELRS 2.4GHz band
-        'ELRS_2400_CH1': 2400e6,   # ELRS 2.4 GHz Channel 1
-        'ELRS_2400_CH2': 2410e6,   # ELRS 2.4 GHz Channel 2
-        'ELRS_2400_CH3': 2420e6,   # ELRS 2.4 GHz Channel 3
-        'ELRS_2400_CH4': 2430e6,   # ELRS 2.4 GHz Channel 4
-        'ELRS_2400_CH5': 2440e6,   # ELRS 2.4 GHz Channel 5
-        'ELRS_2400_CH6': 2450e6,   # ELRS 2.4 GHz Channel 6
-        'ELRS_2400_CH7': 2460e6,   # ELRS 2.4 GHz Channel 7
-        'ELRS_2400_CH8': 2470e6,   # ELRS 2.4 GHz Channel 8
-        'ELRS_2400_CH9': 2480e6,   # ELRS 2.4 GHz Channel 9
         
         # Additional test frequencies
         'S_BAND': 3e9,             # S-band (3 GHz)
@@ -240,11 +205,55 @@ class RawEnergyProtocol:
         
         return signal
     
+    def _get_frequency_name(self, frequency: float) -> str:
+        """Get frequency name from frequency value"""
+        # Find the frequency in our list
+        for name, freq in self.SIGNAL_FREQUENCIES.items():
+            if abs(freq - frequency) < 1e3:  # 1 kHz tolerance
+                return name.lower()
+        return f"freq_{int(frequency/1e6)}"
+    
     def generate_raw_energy_signal(self, frequency: float, bandwidth: float,
                                  duration: float, noise_type: str = 'white',
                                  sample_rate: int = 2000000) -> np.ndarray:
-        """Generate raw energy signal with specified parameters"""
+        """Generate raw energy signal with specified parameters using cache"""
+        # Use cache for raw energy signals
+        from .universal_signal_cache import get_universal_cache
+        cache = get_universal_cache()
         
+        # Define parameters for caching
+        parameters = {
+            'frequency': frequency,
+            'bandwidth': bandwidth,
+            'noise_type': noise_type,
+            'duration': duration
+        }
+        
+        # Define generator function
+        def generate_signal(frequency, bandwidth, noise_type, duration):
+            return self._generate_raw_energy_signal_internal(frequency, bandwidth, duration, noise_type, sample_rate)
+        
+        # Get from cache or generate
+        cached_path, actual_sample_rate = cache.get_or_generate_signal(
+            signal_type='raw_energy',
+            protocol=f'raw_{self._get_frequency_name(frequency)}',
+            parameters=parameters,
+            generator_func=generate_signal
+        )
+        
+        # Load cached signal
+        with open(cached_path, 'rb') as f:
+            signal_bytes = f.read()
+        
+        # Convert to numpy array
+        signal_data = np.frombuffer(signal_bytes, dtype=np.int8).astype(np.float32) / 127.0
+        
+        return signal_data
+    
+    def _generate_raw_energy_signal_internal(self, frequency: float, bandwidth: float,
+                                           duration: float, noise_type: str = 'white',
+                                           sample_rate: int = 2000000) -> tuple:
+        """Internal method to generate raw energy signal (called by cache)"""
         print(f"Generating raw energy signal:")
         print(f"- Frequency: {frequency/1e6:.2f} MHz")
         print(f"- Bandwidth: {bandwidth/1e6:.1f} MHz")
@@ -272,7 +281,7 @@ class RawEnergyProtocol:
         # Ensure maximum amplitude (no power scaling reduction)
         signal = signal / np.max(np.abs(signal))  # Normalize to [-1, 1]
         
-        return signal
+        return signal, sample_rate
     
     def get_frequency_info(self, frequency: float) -> Dict[str, Any]:
         """Get information about a specific frequency"""
@@ -327,14 +336,6 @@ class RawEnergyProtocol:
             'X_BAND': 'X-band radar/satellite'
         }
         
-        # Handle ELRS frequencies
-        if 'ELRS_433' in name:
-            return f'ELRS 433MHz band channel'
-        elif 'ELRS_868' in name:
-            return f'ELRS 868MHz band channel'
-        elif 'ELRS_915' in name:
-            return f'ELRS 915MHz band channel'
-        elif 'ELRS_2400' in name:
-            return f'ELRS 2.4GHz band channel'
+
         
         return descriptions.get(name, 'RF frequency') 

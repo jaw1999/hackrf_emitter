@@ -20,7 +20,9 @@ import {
   AcademicCapIcon,
   LightBulbIcon,
   ShieldCheckIcon,
-  ExclamationTriangleIcon
+  ExclamationTriangleIcon,
+  BoltIcon,
+  FireIcon
 } from '@heroicons/react/24/outline';
 import { useSocket } from '../contexts/SocketContext';
 import { apiService, Workflow, SystemStatus } from '../services/api';
@@ -31,6 +33,7 @@ const categoryIcons: { [key: string]: React.ComponentType<any> } = {
   'Basic': BeakerIcon,
   'Modulation': RadioIcon,
   'RC Control': WifiIcon,
+  'ELRS Jamming': BoltIcon,
   'GNSS': GlobeAltIcon,
   'Aviation': SignalIcon,
   'Advanced': SparklesIcon,
@@ -590,18 +593,40 @@ const Workflows: React.FC = () => {
                         const complexityData = complexityInfo[workflow.complexity || 'Basic'];
                         const ComplexityIcon = complexityData.icon;
                         
+                        const isELRSJamming = workflow.category === 'ELRS Jamming';
+                        
                         return (
                           <div
                             key={workflow.name}
-                            className={`bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:shadow-md transition-all hover:border-primary-300 dark:hover:border-primary-600 ${viewMode === 'list' ? 'flex items-center p-4' : 'p-5'}`}
+                            className={`bg-white dark:bg-gray-800 border rounded-lg hover:shadow-md transition-all ${viewMode === 'list' ? 'flex items-center p-4' : 'p-5'} ${
+                              isELRSJamming 
+                                ? 'border-orange-300 dark:border-orange-600 hover:border-orange-400 dark:hover:border-orange-500 bg-gradient-to-br from-orange-50 to-red-50 dark:from-orange-950 dark:to-red-950' 
+                                : 'border-gray-200 dark:border-gray-700 hover:border-primary-300 dark:hover:border-primary-600'
+                            }`}
                           >
                             {viewMode === 'grid' ? (
                               <>
                                 {/* Enhanced Workflow Header */}
                                 <div className="flex items-start justify-between mb-4">
-                                  <h3 className="font-semibold text-gray-900 dark:text-gray-100 text-lg leading-tight">
-                                    {workflow.display_name}
-                                  </h3>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center space-x-2 mb-1">
+                                      <h3 className="font-semibold text-gray-900 dark:text-gray-100 text-lg leading-tight">
+                                        {workflow.display_name}
+                                      </h3>
+                                      {isELRSJamming && (
+                                        <div className="flex items-center space-x-1 bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 px-2 py-1 rounded-full text-xs font-bold border border-red-200 dark:border-red-700">
+                                          <FireIcon className="h-3 w-3" />
+                                          <span>MAX POWER</span>
+                                        </div>
+                                      )}
+                                    </div>
+                                    {isELRSJamming && (
+                                      <div className="flex items-center space-x-2 text-xs text-orange-700 dark:text-orange-300">
+                                        <BoltIcon className="h-3 w-3" />
+                                        <span>47 dBm • Frequency Sweeping • Multiple Patterns</span>
+                                      </div>
+                                    )}
+                                  </div>
                                   <div className={`ml-3 px-3 py-1 text-xs font-medium rounded-full border ${complexityData.color} flex items-center space-x-1`}>
                                     <ComplexityIcon className="h-3 w-3" />
                                     <span>{workflow.complexity || 'Basic'}</span>
@@ -689,6 +714,74 @@ const Workflows: React.FC = () => {
                             <p className="text-sm text-blue-800 dark:text-blue-200 mt-1">
                               These workflows are perfect for learning. They use safe, well-tested parameters and include detailed descriptions.
                             </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {category === 'ELRS Jamming' && (
+                      <div className="mt-6 p-4 bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-950 dark:to-red-950 rounded-lg border border-orange-200 dark:border-orange-700">
+                        <div className="flex items-start space-x-2">
+                          <FireIcon className="h-5 w-5 text-orange-600 dark:text-orange-400 mt-0.5" />
+                          <div>
+                            <h4 className="text-sm font-medium text-orange-900 dark:text-orange-100 flex items-center space-x-2">
+                              <span>Maximum Power ELRS Jamming</span>
+                              <div className="flex items-center space-x-1 bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 px-2 py-1 rounded-full text-xs font-bold">
+                                <BoltIcon className="h-3 w-3" />
+                                <span>47 dBm</span>
+                              </div>
+                            </h4>
+                            <p className="text-sm text-orange-800 dark:text-orange-200 mt-2">
+                              Advanced frequency sweeping jammers that mimic real ELRS behavior. These workflows use maximum HackRF power (47 dBm) and sweep across 20-24 channels per band for maximum effectiveness against frequency hopping systems.
+                            </p>
+                            <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                              <div className="flex items-center space-x-1 text-orange-700 dark:text-orange-300">
+                                <BoltIcon className="h-3 w-3" />
+                                <span><strong>Frequency Sweeping:</strong> Pseudorandom hopping patterns</span>
+                              </div>
+                              <div className="flex items-center space-x-1 text-orange-700 dark:text-orange-300">
+                                <BoltIcon className="h-3 w-3" />
+                                <span><strong>Barrage Mode:</strong> Simultaneous multi-channel coverage</span>
+                              </div>
+                              <div className="flex items-center space-x-1 text-orange-700 dark:text-orange-300">
+                                <BoltIcon className="h-3 w-3" />
+                                <span><strong>Adaptive:</strong> Real-time traffic pattern detection</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {category === 'Drone Video Jamming' && (
+                      <div className="mt-6 p-4 bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-950 dark:to-blue-950 rounded-lg border border-purple-200 dark:border-purple-700">
+                        <div className="flex items-start space-x-2">
+                          <FireIcon className="h-5 w-5 text-purple-600 dark:text-purple-400 mt-0.5" />
+                          <div>
+                            <h4 className="text-sm font-medium text-purple-900 dark:text-purple-100 flex items-center space-x-2">
+                              <span>Drone Video Link Jamming</span>
+                              <div className="flex items-center space-x-1 bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 px-2 py-1 rounded-full text-xs font-bold">
+                                <BoltIcon className="h-3 w-3" />
+                                <span>47 dBm</span>
+                              </div>
+                            </h4>
+                                                         <p className="text-sm text-purple-800 dark:text-purple-200 mt-2">
+                               Advanced FPV video link jamming for 1.2 GHz and 5.7-5.9 GHz bands. Targets common drone video transmission frequencies including race band, ImmersionRC, and Fatshark channels with maximum power disruption.
+                             </p>
+                            <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                              <div className="flex items-center space-x-1 text-purple-700 dark:text-purple-300">
+                                <BoltIcon className="h-3 w-3" />
+                                <span><strong>1.2 GHz:</strong> Long-range video jamming</span>
+                              </div>
+                                                             <div className="flex items-center space-x-1 text-purple-700 dark:text-purple-300">
+                                 <BoltIcon className="h-3 w-3" />
+                                 <span><strong>5.7-5.9 GHz:</strong> Race band focused targeting</span>
+                               </div>
+                              <div className="flex items-center space-x-1 text-purple-700 dark:text-purple-300">
+                                <BoltIcon className="h-3 w-3" />
+                                <span><strong>Video Optimized:</strong> Frame disruption patterns</span>
+                              </div>
+                            </div>
                           </div>
                         </div>
                       </div>

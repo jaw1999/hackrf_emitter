@@ -1,6 +1,6 @@
 # HackRF Emitter Project
 
-A comprehensive, professional-grade RF signal generation platform with an intuitive web interface for controlling HackRF devices. This system provides unrestricted access to RF signal generation capabilities across the full HackRF frequency range, making it ideal for advanced RF research, testing, and educational purposes.
+A professional RF signal generation platform with a web interface for controlling HackRF devices. This system provides access to RF signal generation capabilities across the full HackRF frequency range for RF research, testing, and educational purposes.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
@@ -9,12 +9,13 @@ A comprehensive, professional-grade RF signal generation platform with an intuit
 ## 🚀 Key Features
 
 ### Core Capabilities
-- **🌐 Modern Web Interface**: Intuitive React-based UI with real-time control and monitoring
-- **🔧 Unrestricted Operation**: Full parameter control without artificial limitations
-- **📡 Multi-Protocol Support**: Comprehensive library of RF protocols and modulations
-- **⚡ Real-time Processing**: Live signal generation with WebSocket communication
-- **🎯 Precision Control**: Fine-grained parameter adjustment for all signal types
-- **📊 Visual Feedback**: Real-time status monitoring and signal visualization
+- **Web Interface**: React-based UI with real-time control and monitoring
+- **Full Control**: Parameter control without limitations
+- **Multi-Protocol Support**: Library of RF protocols and modulations
+- **Instant Transmission**: Universal signal cache for zero-delay RF transmission
+- **Precision Control**: Parameter adjustment for all signal types
+- **Visual Feedback**: Real-time status monitoring and signal visualization
+- **Signal Caching**: Pre-generated signals for instant HackRF activation
 
 ### Supported RF Protocols & Modulations
 
@@ -44,13 +45,20 @@ A comprehensive, professional-grade RF signal generation platform with an intuit
 - **Raw Energy**: Wideband noise generation for testing
 - **Custom Digital**: User-defined protocols and data patterns
 
-### Enhanced User Experience
-- **🎨 Intuitive Design**: Modern, responsive interface with dark/light themes
-- **🔍 Smart Search**: Advanced filtering and categorization of workflows
-- **📱 Mobile Friendly**: Responsive design works on all devices
-- **⚙️ Parameter Validation**: Smart input validation with helpful hints
-- **🚨 Emergency Controls**: Instant transmission stop capabilities
-- **📈 Progress Tracking**: Real-time transmission status and timing
+### Instant Transmission Technology
+With the **Universal Signal Cache**, signals are pre-generated and ready for instant transmission:
+- **Zero Generation Delay**: No waiting for signal computation
+- **Instant HackRF Activation**: LED turns RED immediately
+- **Consistent Performance**: Same response for all protocols
+- **Background Initialization**: Cache builds automatically on first run
+
+### User Experience
+- **Design**: Modern, responsive interface with dark/light themes
+- **Search**: Filtering and categorization of workflows
+- **Mobile Friendly**: Responsive design works on all devices
+- **Parameter Validation**: Input validation with helpful hints
+- **Emergency Controls**: Instant transmission stop capabilities
+- **Progress Tracking**: Real-time transmission status and timing
 
 ## 🏗️ Architecture
 
@@ -67,6 +75,31 @@ A comprehensive, professional-grade RF signal generation platform with an intuit
 └─────────────────┘                 └─────────────────┘               └─────────────────┘
 ```
 
+### Universal Signal Cache System
+
+The HackRF Emitter features a **Universal Signal Cache** system that pre-generates RF signals on first startup, enabling instant transmission with zero generation delay.
+
+#### Key Benefits
+- **Instant LED Response**: HackRF LED turns RED immediately upon transmission start
+- **Zero Latency**: Pre-cached signals eliminate computation delays
+- **Smart Storage**: ~500+ pre-generated signals covering all protocols
+- **Automatic Management**: Cache initializes in background on first run
+- **Efficient Retrieval**: < 0.1 second signal loading time
+
+#### How It Works
+1. **First Launch**: System pre-generates all possible signal configurations
+2. **Smart Caching**: Signals stored in optimized binary format
+3. **Instant Access**: When you trigger any workflow, the pre-generated signal loads instantly
+4. **Memory Efficient**: Only active signals are loaded into memory
+
+#### Cache Contents
+- **ELRS Protocols**: All bands (433/868/915/2400 MHz) with all packet rates
+- **GPS Signals**: L1, L2, L5 bands with multi-satellite constellations  
+- **ADS-B**: Multiple aircraft scenarios
+- **Jamming Signals**: Wideband noise for all supported frequencies
+- **Raw Energy**: Pre-generated for all frequency/bandwidth combinations
+- **Basic Modulations**: Sine waves, FM, AM signals
+
 ### Project Structure
 ```
 hackrf_emitter/
@@ -76,6 +109,7 @@ hackrf_emitter/
 │   │   ├── hackrf_controller.py  # HackRF device interface
 │   │   ├── modulation_workflows.py # Basic modulation workflows
 │   │   ├── enhanced_workflows.py # Advanced protocol implementations
+│   │   ├── universal_signal_cache.py # Universal signal caching system
 │   │   └── protocols/            # Protocol-specific implementations
 │   │       ├── elrs_protocol.py  # ExpressLRS implementation
 │   │       ├── gps_protocol.py   # GPS/GNSS simulation
@@ -87,6 +121,9 @@ hackrf_emitter/
 │   │   └── signal_processing.py  # DSP utilities
 │   ├── 📁 config/               # Configuration files
 │   │   └── settings.json        # System configuration
+│   ├── 📁 signal_cache/         # Pre-generated RF signals (auto-created)
+│   ├── 🔧 initialize_cache.py   # Cache initialization script
+│   ├── 🔧 run_cache_init.sh     # Helper script for cache initialization
 │   └── 📄 requirements.txt      # Python dependencies
 ├── 📁 frontend/                  # React TypeScript UI
 │   ├── 📁 src/
@@ -111,6 +148,7 @@ hackrf_emitter/
 │   ├── PROTOCOLS.md            # Protocol implementation details
 │   └── TROUBLESHOOTING.md      # Common issues & solutions
 ├── 🔧 start.sh                 # Quick start script
+├── 🧪 test_universal_cache.py  # Cache testing script
 ├── ⚙️ docker-compose.yml       # Docker deployment configuration
 └── 📄 README.md               # This file
 ```
@@ -123,7 +161,7 @@ hackrf_emitter/
 - **Node.js**: 16.0 or higher
 - **Hardware**: HackRF One device (optional for simulation mode)
 - **Memory**: 4GB RAM minimum, 8GB recommended
-- **Storage**: 2GB free space
+- **Storage**: 4GB free space (2GB for cache, 2GB for application)
 
 ### Quick Start (Recommended)
 ```bash
@@ -141,6 +179,7 @@ The start script will automatically:
 - Set up Python virtual environment
 - Install backend dependencies
 - Install frontend dependencies
+- Initialize universal signal cache (first run only)
 - Start both services
 - Open the web interface
 
@@ -176,7 +215,23 @@ npm install
 npm install -g typescript @types/node
 ```
 
-#### 3. HackRF Device Setup (Optional)
+#### 3. Initialize Signal Cache (Recommended)
+```bash
+# Navigate to backend directory
+cd backend
+
+# Option 1: Using the helper script (Recommended)
+./run_cache_init.sh
+
+# Option 2: Manual activation
+source venv/bin/activate
+python3 initialize_cache.py
+
+# This pre-generates all signals (takes 3-5 minutes)
+# Progress will be displayed during generation
+```
+
+#### 4. HackRF Device Setup (Optional)
 ```bash
 # Test HackRF connection
 hackrf_info
@@ -219,8 +274,38 @@ npm start
 2. **Open Web Interface**: Navigate to http://localhost:3000
 3. **Select Workflow**: Choose from the categorized workflow library
 4. **Configure Parameters**: Set frequency, power, duration, and protocol-specific settings
-5. **Start Transmission**: Click "Configure & Launch" to begin signal generation
+5. **Start Transmission**: Click "Configure & Launch" to begin instant signal generation
 6. **Monitor Status**: Watch real-time status and use emergency stop if needed
+
+### Cache Management
+
+#### Check Cache Status
+```bash
+cd backend
+python -c "from rf_workflows.universal_signal_cache import get_universal_cache; cache = get_universal_cache(); print(cache.get_cache_status())"
+```
+
+#### Regenerate All Signals
+```bash
+cd backend
+
+# Option 1: Using the helper script (Recommended)
+./run_cache_init.sh --force
+
+# Option 2: Manual activation
+source venv/bin/activate
+python3 initialize_cache.py --force
+```
+
+#### Test Cache Performance
+```bash
+python test_universal_cache.py
+```
+
+#### Clear Cache (if needed)
+```bash
+rm -rf backend/signal_cache/
+```
 
 ### Example Workflows
 
@@ -272,6 +357,13 @@ The system uses `backend/config/settings.json` for configuration:
 }
 ```
 
+### Cache Configuration
+The universal signal cache stores pre-generated signals in:
+- **Location**: `backend/signal_cache/`
+- **Size**: ~1-2 GB (depending on configurations)
+- **Files**: 500+ pre-generated RF signals
+- **Format**: Optimized 8-bit I/Q binary format
+
 ### Environment Variables
 ```bash
 # Optional environment variables
@@ -280,6 +372,7 @@ export RF_EMITTER_DEBUG=1           # Enable debug logging
 export RF_EMITTER_SIMULATION=1      # Force simulation mode
 export RF_EMITTER_PORT=5000         # Backend port
 export RF_EMITTER_FRONTEND_PORT=3000 # Frontend port
+export RF_EMITTER_CACHE_DIR=/path/to/cache # Custom cache directory
 ```
 
 ## 🔌 API Reference
@@ -406,6 +499,11 @@ source backend/venv/bin/activate
 
 # Reinstall dependencies
 pip install -r backend/requirements.txt
+
+# If you encounter "No module named 'crc16'" or similar errors:
+# Use the helper script which automatically activates the virtual environment
+cd backend
+./run_cache_init.sh
 ```
 
 #### Frontend Build Issues
@@ -429,6 +527,23 @@ cd frontend && npm install
 - Limit transmission duration for long-running workflows
 - Monitor system resources during operation
 - Use appropriate buffer sizes
+
+#### Slow Transmission Start
+- Ensure signal cache is initialized: `cd backend && ./run_cache_init.sh`
+- Check cache status: `python test_universal_cache.py`
+- Verify cache directory has sufficient space (needs ~2GB)
+- Cache regeneration may be needed if signals were deleted
+
+#### Cache Issues
+```bash
+# If cache is corrupted or incomplete
+cd backend
+rm -rf signal_cache/
+./run_cache_init.sh
+
+# If disk space is limited, remove unused signals
+# Cache will regenerate them on demand
+```
 
 ## 🛡️ Safety & Legal Information
 

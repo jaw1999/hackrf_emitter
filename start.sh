@@ -300,18 +300,33 @@ if $NEED_INSTALL; then
     echo -e "${CYAN}Installing backend dependencies...${NC}"
     echo "This may take a few minutes on first run..."
     
-    pip install --upgrade pip > /dev/null 2>&1
-    pip install -r requirements.txt > /dev/null 2>&1 || {
+    # Upgrade pip first
+    echo -e "${CYAN}Upgrading pip...${NC}"
+    pip install --upgrade pip || {
+        print_error "Failed to upgrade pip"
+        exit 1
+    }
+    
+    # Install dependencies with progress
+    echo -e "${CYAN}Installing packages from requirements.txt...${NC}"
+    pip install -r requirements.txt || {
         print_error "Failed to install backend dependencies"
-        echo "Try running: pip install -r requirements.txt"
+        echo "Error details shown above. Common fixes:"
+        echo "  1. Check your internet connection"
+        echo "  2. Try: pip install --upgrade pip setuptools wheel"
+        echo "  3. CRC16 now uses pure Python implementation (no external dependencies)"
+        echo "  4. Run manually: pip install -r requirements.txt"
         exit 1
     }
     
     # Create marker file
     touch venv/.deps_installed
-    print_success "Backend dependencies installed"
+    print_success "Backend dependencies installed successfully"
 else
     print_success "Backend dependencies already up to date"
+    
+    # CRC16 now uses pure Python implementation - no external dependencies needed
+print_success "CRC16 using pure Python implementation"
 fi
 
 # Frontend Setup
@@ -366,11 +381,14 @@ echo -e "${CYAN}Starting backend server...${NC}"
 cd "$ORIGINAL_DIR/backend"
 source venv/bin/activate
 
-python app.py > backend.log 2>&1 &
+# Start backend with logs visible
+echo -e "${YELLOW}Backend logs will appear below:${NC}"
+echo "----------------------------------------"
+python app.py &
 BACKEND_PID=$!
 
 # Wait for backend to start and check if it's running
-echo -e "${CYAN}Waiting for backend to initialize...${NC}"
+echo -e "\n${CYAN}Waiting for backend to initialize...${NC}"
 for i in {1..10}; do
     if kill -0 $BACKEND_PID 2>/dev/null; then
         if check_http_endpoint "http://localhost:5000/api/status"; then
@@ -378,8 +396,7 @@ for i in {1..10}; do
             break
         fi
     else
-        print_error "Backend failed to start"
-        echo "Check backend.log for details"
+        print_error "Backend failed to start - check logs above"
         exit 1
     fi
     
@@ -400,11 +417,13 @@ cd "$ORIGINAL_DIR/frontend"
 # Set environment to suppress browser auto-open (we'll do it manually)
 export BROWSER=none
 
-npm start > frontend.log 2>&1 &
+echo -e "${YELLOW}Frontend logs will appear below:${NC}"
+echo "----------------------------------------"
+npm start &
 FRONTEND_PID=$!
 
 # Wait for frontend to start
-echo -e "${CYAN}Waiting for frontend to initialize...${NC}"
+echo -e "\n${CYAN}Waiting for frontend to initialize...${NC}"
 for i in {1..15}; do
     if kill -0 $FRONTEND_PID 2>/dev/null; then
         if check_http_endpoint "http://localhost:3000"; then
@@ -412,8 +431,7 @@ for i in {1..15}; do
             break
         fi
     else
-        print_error "Frontend failed to start"
-        echo "Check frontend.log for details"
+        print_error "Frontend failed to start - check logs above"
         cleanup
         exit 1
     fi
@@ -438,9 +456,9 @@ echo -e "  ${CHECK} Backend API: http://localhost:5000"
 echo -e "  ${CHECK} Frontend UI: http://localhost:3000"
 echo -e "  ${CHECK} WebSocket: ws://localhost:5000"
 
-echo -e "\n${CYAN}Log Files:${NC}"
-echo -e "  📄 Backend: $ORIGINAL_DIR/backend/backend.log"
-echo -e "  📄 Frontend: $ORIGINAL_DIR/frontend/frontend.log"
+echo -e "\n${CYAN}Live Logs:${NC}"
+echo -e "  📄 Backend and Frontend logs are displayed in real-time above"
+echo -e "  📊 Any errors or status messages will appear immediately"
 
 echo -e "\n${CYAN}Quick Start Guide:${NC}"
 echo -e "  1. 🌐 Open http://localhost:3000 in your browser"

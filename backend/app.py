@@ -9,6 +9,7 @@ from datetime import datetime
 
 from rf_workflows.hackrf_controller import HackRFController
 from rf_workflows.modulation_workflows import ModulationWorkflows
+from rf_workflows.universal_signal_cache import initialize_universal_cache, get_universal_cache
 from utils.config_manager import ConfigManager
 from utils.safety_manager import SafetyManager
 
@@ -177,6 +178,14 @@ def get_device_info():
     info = hackrf_controller.get_device_info()
     return jsonify(info)
 
+@app.route('/api/library', methods=['GET'])
+def get_library():
+    """Get the list of all cached signals and their metadata"""
+    cache = get_universal_cache()
+    # Return a list of dicts for each cached signal
+    signals = [signal.__dict__ for signal in cache.cached_signals.values()]
+    return jsonify(signals)
+
 @socketio.on('connect')
 def handle_connect():
     """Handle WebSocket connection"""
@@ -191,6 +200,26 @@ if __name__ == '__main__':
     print("Starting HackRF Emitter Backend...")
     print("API available at: http://localhost:5000")
     print("WebSocket available at: ws://localhost:5000")
+    
+    # Initialize universal signal cache on startup
+    print("\n🚀 Initializing Universal Signal Cache...")
+    try:
+        def init_cache_background():
+            """Initialize cache in background to not block startup"""
+            try:
+                initialize_universal_cache(force_regenerate=False)
+                print("✅ Universal Signal Cache ready - all signals pre-generated!")
+            except Exception as e:
+                print(f"⚠️  Cache initialization failed: {e}")
+                print("   Signals will be generated on-demand (slower first transmission)")
+        
+        # Start cache initialization in background thread
+        cache_thread = threading.Thread(target=init_cache_background)
+        cache_thread.daemon = True
+        cache_thread.start()
+        
+    except Exception as e:
+        print(f"⚠️  Could not start cache initialization: {e}")
     
     # Initialize HackRF connection
     try:

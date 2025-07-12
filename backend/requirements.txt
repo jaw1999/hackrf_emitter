@@ -8,4 +8,5 @@ requests==2.31.0
 python-dotenv==1.0.0
 gunicorn==21.2.0
 flask-socketio==5.3.6
-eventlet==0.33.3 
+eventlet==0.33.3
+# crc16==0.1.1  # Replaced with pure Python implementation in crc16_python.py 

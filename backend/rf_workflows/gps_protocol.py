@@ -320,8 +320,47 @@ class GPSProtocol:
     
     def generate_gps_signal(self, duration: float, sample_rate: int = 2000000,
                            include_satellites: Optional[List[int]] = None) -> np.ndarray:
-        """Generate realistic GPS signal with multiple satellites"""
+        """Generate realistic GPS signal with multiple satellites using cache"""
+        # Use cache for GPS signals
+        from .universal_signal_cache import get_universal_cache
+        cache = get_universal_cache()
         
+        if include_satellites is None:
+            include_satellites = [sat.svid for sat in self.satellites]
+        
+        # Define parameters for caching
+        parameters = {
+            'band': self.frequency_band,
+            'num_satellites': len(include_satellites),
+            'duration': duration
+        }
+        
+        # Debug logging removed for clean output
+        
+        # Define generator function
+        def generate_signal(band, num_satellites, duration):
+            return self._generate_gps_signal_internal(duration, sample_rate, include_satellites)
+        
+        # Get from cache or generate
+        cached_path, actual_sample_rate = cache.get_or_generate_signal(
+            signal_type='gps',
+            protocol=f'gps_{self.frequency_band.lower()}',
+            parameters=parameters,
+            generator_func=generate_signal
+        )
+        
+        # Load cached signal
+        with open(cached_path, 'rb') as f:
+            signal_bytes = f.read()
+        
+        # Convert to numpy array
+        signal_data = np.frombuffer(signal_bytes, dtype=np.int8).astype(np.float32) / 127.0
+        
+        return signal_data
+    
+    def _generate_gps_signal_internal(self, duration: float, sample_rate: int = 2000000,
+                                    include_satellites: Optional[List[int]] = None) -> Tuple[np.ndarray, float]:
+        """Internal method to generate GPS signal (called by cache)"""
         if include_satellites is None:
             include_satellites = [sat.svid for sat in self.satellites]
         
@@ -393,7 +432,7 @@ class GPSProtocol:
         if max_val > 0:
             real_signal = real_signal / max_val * 1.0  # Use full amplitude
         
-        return real_signal
+        return real_signal, sample_rate
     
     def get_satellite_info(self) -> List[Dict[str, Any]]:
         """Get information about all satellites"""

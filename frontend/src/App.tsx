@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard';
 import Workflows from './pages/Workflows';
 import DeviceInfoPage from './pages/DeviceInfo';
 import Settings from './pages/Settings';
+import Library from './pages/Library';
 
 function App() {
   return (
@@ -15,6 +16,7 @@ function App() {
           <Route path="/workflows" element={<Workflows />} />
           <Route path="/device" element={<DeviceInfoPage />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/library" element={<Library />} />
         </Routes>
       </Layout>
     </div>

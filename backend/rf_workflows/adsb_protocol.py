@@ -418,8 +418,44 @@ class ADSBProtocol:
             pass
     
     def generate_adsb_transmission(self, duration: float, sample_rate: int = 2000000) -> np.ndarray:
-        """Generate realistic ADS-B transmission with multiple aircraft"""
+        """Generate realistic ADS-B transmission with multiple aircraft using cache"""
+        # Use cache for ADS-B signals
+        from .universal_signal_cache import get_universal_cache
+        cache = get_universal_cache()
         
+        if not self.aircraft_list:
+            # Create some default aircraft if none exist
+            self._create_default_aircraft()
+        
+        # Define parameters for caching
+        parameters = {
+            'num_aircraft': len(self.aircraft_list),
+            'duration': duration
+        }
+        
+        # Define generator function
+        def generate_signal(num_aircraft, duration):
+            return self._generate_adsb_transmission_internal(duration, sample_rate)
+        
+        # Get from cache or generate
+        cached_path, actual_sample_rate = cache.get_or_generate_signal(
+            signal_type='adsb',
+            protocol='adsb_1090',
+            parameters=parameters,
+            generator_func=generate_signal
+        )
+        
+        # Load cached signal
+        with open(cached_path, 'rb') as f:
+            signal_bytes = f.read()
+        
+        # Convert to numpy array
+        signal_data = np.frombuffer(signal_bytes, dtype=np.int8).astype(np.float32) / 127.0
+        
+        return signal_data
+    
+    def _generate_adsb_transmission_internal(self, duration: float, sample_rate: int = 2000000) -> tuple:
+        """Internal method to generate ADS-B transmission (called by cache)"""
         if not self.aircraft_list:
             # Create some default aircraft if none exist
             self._create_default_aircraft()
@@ -485,7 +521,7 @@ class ADSBProtocol:
         if max_val > 0:
             signal = signal / max_val * 1.0  # Use full amplitude
         
-        return signal
+        return signal, sample_rate
     
     def _create_default_aircraft(self):
         """Create some default aircraft for demonstration"""

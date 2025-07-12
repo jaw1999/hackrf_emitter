@@ -1,28 +1,26 @@
+#!/usr/bin/env python3
 """
 ExpressLRS (ELRS) Protocol Implementation
-Realistic ExpressLRS signal generation with proper LoRa modulation, 
-frequency hopping, and packet structures for RC applications.
+Realistic ExpressLRS control link simulation with proper LoRa modulation,
+frequency hopping, telemetry, and RC control packet generation.
 """
 
 import numpy as np
 import time
-import threading
-from typing import Dict, Any, List, Tuple
+import struct
+from typing import List, Dict, Any, Tuple
 from dataclasses import dataclass
+from .crc16_python import crc16xmodem
 
 
 @dataclass
-class ELRSConfig:
-    """ExpressLRS configuration parameters"""
-    frequency: float
-    bandwidth: int  # Hz
-    spreading_factor: int
-    coding_rate: str
-    packet_rate: int  # Hz
-    power_level: int  # dBm
-    hop_interval: float  # seconds
-    sync_word: int
-    preamble_length: int
+class ELRSPacket:
+    """ELRS packet structure"""
+    type: int           # 0x0 = RC data, 0x1 = Telemetry, 0x2 = Sync
+    channels: List[int] # RC channel values (1000-2000 microseconds)
+    telemetry: Dict    # Telemetry data (RSSI, LQ, battery, etc.)
+    sync_data: bytes   # Sync packet data
+    crc: int          # CRC16 checksum
 
 
 class ELRSProtocol:
@@ -109,272 +107,225 @@ class ELRSProtocol:
         
         return chirp
     
-    def _generate_preamble(self, config: ELRSConfig, sample_rate: int) -> np.ndarray:
-        """Generate ELRS preamble with upchirps and sync word"""
-        preamble_duration = config.preamble_length / (config.bandwidth / (2**config.spreading_factor))
-        symbol_duration = (2**config.spreading_factor) / config.bandwidth
+    def _create_rc_packet(self, channel_values: List[int], packet_number: int) -> ELRSPacket:
+        """Create RC control packet with channel data"""
+        # Ensure we have 16 channels (ELRS standard)
+        channels = channel_values[:16] if len(channel_values) >= 16 else channel_values + [1500] * (16 - len(channel_values))
         
-        # Generate upchirps
-        upchirps = []
-        for _ in range(config.preamble_length):
-            chirp = self._generate_lora_chirp(
-                symbol_duration, config.bandwidth, 
-                config.spreading_factor, sample_rate, True
-            )
-            upchirps.append(chirp)
+        # Convert microseconds to 10-bit values (ELRS uses 10-bit resolution)
+        packed_channels = [(int((ch - 1000) * 1023 / 1000) & 0x3FF) for ch in channels]
         
-        # Sync word detection chirps
-        sync_chirps = []
-        for _ in range(2):  # 2.25 sync chirps
-            chirp = self._generate_lora_chirp(
-                symbol_duration, config.bandwidth, 
-                config.spreading_factor, sample_rate, False
-            )
-            sync_chirps.append(chirp)
-        
-        # Combine all chirps
-        preamble = np.concatenate(upchirps + sync_chirps)
-        return preamble
-    
-    def _encode_packet_data(self, control_data: Dict[str, Any]) -> bytes:
-        """Encode RC control data into ELRS packet format"""
-        # ELRS packet structure:
-        # - Header (1 byte): packet type, sequence number
-        # - RC Channels (variable): 10-16 bit per channel
-        # - Telemetry request (1 bit)
-        # - CRC (2 bytes)
-        
-        packet = bytearray()
-        
-        # Header
-        packet_type = 0b00000000  # RC packet
-        sequence = control_data.get('sequence', 0) & 0x0F
-        header = (packet_type << 4) | sequence
-        packet.append(header)
-        
-        # RC Channels (4 primary channels, 11-bit each)
-        channels = [
-            control_data.get('roll', 1500),     # Aileron
-            control_data.get('pitch', 1500),    # Elevator  
-            control_data.get('throttle', 1000), # Throttle
-            control_data.get('yaw', 1500),      # Rudder
-        ]
-        
-        # Pack channels (11-bit each, 44 bits total = 5.5 bytes)
-        channel_data = 0
-        for i, channel in enumerate(channels):
-            # Convert 1000-2000 µs to 11-bit (0-2047)
-            channel_val = int((channel - 1000) * 2047 / 1000)
-            channel_val = max(0, min(2047, channel_val))
-            channel_data |= (channel_val << (i * 11))
-        
-        # Pack into bytes
-        for i in range(6):  # 44 bits = 6 bytes (with padding)
-            packet.append((channel_data >> (i * 8)) & 0xFF)
-        
-        # Additional channels (aux channels)
-        aux_channels = control_data.get('aux_channels', [1500] * 4)
-        for aux in aux_channels:
-            # 8-bit aux channels
-            aux_val = int((aux - 1000) * 255 / 1000)
-            aux_val = max(0, min(255, aux_val))
-            packet.append(aux_val)
-        
-        # Telemetry request bit (simplified)
-        telemetry_req = control_data.get('telemetry_request', False)
-        packet.append(0x01 if telemetry_req else 0x00)
-        
-        # CRC-16 (simplified)
-        crc = self._calculate_crc16(packet)
-        packet.append(crc & 0xFF)
-        packet.append((crc >> 8) & 0xFF)
-        
-        return bytes(packet)
-    
-    def _calculate_crc16(self, data: bytearray) -> int:
-        """Calculate CRC-16 for packet integrity"""
-        # Simple CRC-16-CCITT implementation
-        crc = 0xFFFF
-        for byte in data:
-            crc ^= byte << 8
-            for _ in range(8):
-                if crc & 0x8000:
-                    crc = (crc << 1) ^ 0x1021
-                else:
-                    crc <<= 1
-                crc &= 0xFFFF
-        return crc
-    
-    def _modulate_packet(self, packet_data: bytes, config: ELRSConfig, 
-                        sample_rate: int) -> np.ndarray:
-        """Modulate packet data using LoRa modulation"""
-        symbol_duration = (2**config.spreading_factor) / config.bandwidth
-        
-        # Convert packet to symbols
-        symbols = []
-        for byte in packet_data:
-            # Split byte into symbols based on spreading factor
-            if config.spreading_factor <= 8:
-                symbols.append(byte)
-            else:
-                # For higher SF, split bytes into smaller symbols
-                for i in range(0, 8, config.spreading_factor):
-                    symbol = (byte >> i) & ((1 << config.spreading_factor) - 1)
-                    symbols.append(symbol)
-        
-        # Generate modulated signal
-        modulated_signal = []
-        for symbol in symbols:
-            # Each symbol is represented by a chirp with specific start frequency
-            start_freq = -config.bandwidth/2 + (symbol * config.bandwidth / (2**config.spreading_factor))
-            
-            # Generate symbol chirp
-            num_samples = int(symbol_duration * sample_rate)
-            t = np.linspace(0, symbol_duration, num_samples, False)
-            
-            freq_slope = config.bandwidth / symbol_duration
-            instantaneous_freq = start_freq + freq_slope * t
-            
-            # Handle frequency wrap-around
-            instantaneous_freq = np.mod(instantaneous_freq + config.bandwidth/2, config.bandwidth) - config.bandwidth/2
-            
-            phase = 2 * np.pi * np.cumsum(instantaneous_freq) / sample_rate
-            symbol_signal = np.cos(phase)
-            
-            modulated_signal.append(symbol_signal)
-        
-        return np.concatenate(modulated_signal)
-    
-    def generate_elrs_transmission(self, duration: float, packet_rate: int, 
-                                 power_level: int, sample_rate: int = 2000000,
-                                 flight_mode: str = 'manual') -> np.ndarray:
-        """Generate realistic ELRS transmission with frequency hopping"""
-        
-        # Get packet rate configuration
-        rate_config = self.PACKET_RATES.get(packet_rate, self.PACKET_RATES[25])
-        
-        # Create ELRS configuration
-        config = ELRSConfig(
-            frequency=self.config['center_freq'],
-            bandwidth=rate_config['bw'],
-            spreading_factor=rate_config['sf'],
-            coding_rate=rate_config['cr'],
-            packet_rate=packet_rate,
-            power_level=power_level,
-            hop_interval=rate_config['interval'],
-            sync_word=self.sync_word,
-            preamble_length=8
+        # Create packet
+        packet = ELRSPacket(
+            type=0x0,  # RC data
+            channels=channels,
+            telemetry={'rssi': -70, 'lq': 100, 'battery': 11.1},
+            sync_data=b'',
+            crc=0
         )
         
-        # Calculate timing
-        packet_interval = 1.0 / packet_rate
-        num_packets = int(duration / packet_interval)
+        # Calculate CRC
+        packet_data = struct.pack('<B', packet.type)  # Packet type
+        for i in range(0, len(packed_channels), 2):
+            # Pack two 10-bit values into 3 bytes
+            if i + 1 < len(packed_channels):
+                val1 = packed_channels[i]
+                val2 = packed_channels[i + 1]
+                packed = (val1 & 0x3FF) | ((val2 & 0x3FF) << 10)
+                packet_data += struct.pack('<I', packed)[:3]
+        
+        # Add packet number and calculate CRC
+        packet_data += struct.pack('<H', packet_number & 0xFFFF)
+        packet.crc = crc16xmodem(packet_data)
+        
+        return packet
+    
+    def _generate_flight_control_pattern(self, flight_mode: str, duration: float) -> List[List[int]]:
+        """Generate realistic RC channel patterns based on flight mode"""
+        num_updates = int(duration * 100)  # 100Hz update rate
+        patterns = []
+        
+        # Channel mapping: [Roll, Pitch, Throttle, Yaw, Aux1, Aux2, ...]
+        for i in range(num_updates):
+            t = i / 100.0  # Time in seconds
+            
+            if flight_mode == 'manual':
+                # Manual mode - gentle movements
+                roll = 1500 + int(100 * np.sin(t * 0.5))
+                pitch = 1500 + int(80 * np.sin(t * 0.3))
+                throttle = 1400 + int(100 * np.sin(t * 0.2))
+                yaw = 1500 + int(50 * np.sin(t * 0.4))
+                
+            elif flight_mode == 'acro':
+                # Acro mode - aggressive movements
+                roll = 1500 + int(400 * np.sin(t * 2.0))
+                pitch = 1500 + int(300 * np.sin(t * 1.5))
+                throttle = 1600
+                yaw = 1500 + int(200 * np.sin(t * 1.0))
+                
+            elif flight_mode == 'stabilized':
+                # Stabilized mode - smooth movements
+                roll = 1500 + int(200 * np.sin(t * 0.3))
+                pitch = 1500 + int(150 * np.sin(t * 0.25))
+                throttle = 1550
+                yaw = 1500
+                
+            else:  # hover
+                # Hover mode - minimal movement
+                roll = 1500 + int(20 * np.sin(t * 0.1))
+                pitch = 1500 + int(20 * np.sin(t * 0.15))
+                throttle = 1500
+                yaw = 1500
+            
+            # Auxiliary channels
+            aux1 = 2000 if flight_mode in ['stabilized', 'hover'] else 1000  # Flight mode switch
+            aux2 = 1500  # Arm switch (armed)
+            
+            channels = [roll, pitch, throttle, yaw, aux1, aux2] + [1500] * 10  # 16 channels total
+            patterns.append(channels)
+        
+        return patterns
+    
+    def _modulate_elrs_packet(self, packet: ELRSPacket, sample_rate: int) -> np.ndarray:
+        """Modulate ELRS packet using LoRa modulation"""
+        # Get packet rate config
+        rate_config = self.PACKET_RATES.get(100, self.PACKET_RATES[100])  # Default 100Hz
+        
+        # Generate preamble (8 upchirps)
+        preamble_duration = 8 * (2**rate_config['sf']) / rate_config['bw']
+        preamble = self._generate_lora_chirp(preamble_duration, rate_config['bw'], 
+                                           rate_config['sf'], sample_rate, True)
+        
+        # Generate sync word (2.25 downchirps)
+        sync_duration = 2.25 * (2**rate_config['sf']) / rate_config['bw']
+        sync_word = self._generate_lora_chirp(sync_duration, rate_config['bw'], 
+                                            rate_config['sf'], sample_rate, False)
+        
+        # Generate data symbols (simplified - actual LoRa uses complex modulation)
+        # For simulation, we'll use frequency-shifted chirps
+        data_duration = 0.001  # 1ms data portion
+        data_signal = np.zeros(int(data_duration * sample_rate))
+        
+        # Modulate packet data onto chirps
+        packet_bytes = struct.pack('<BH', packet.type, packet.crc)
+        for i, byte_val in enumerate(packet_bytes):
+            if i * 8 < len(data_signal):
+                # Frequency shift based on byte value
+                freq_shift = (byte_val - 128) * 1000  # Hz
+                t = np.arange(8) / sample_rate
+                data_signal[i*8:(i+1)*8] = np.cos(2 * np.pi * freq_shift * t)
+        
+        # Combine all parts
+        full_signal = np.concatenate([preamble, sync_word, data_signal])
+        
+        # Apply envelope shaping
+        envelope = np.ones_like(full_signal)
+        ramp_len = int(0.0001 * sample_rate)  # 100us ramp
+        envelope[:ramp_len] = np.linspace(0, 1, ramp_len)
+        envelope[-ramp_len:] = np.linspace(1, 0, ramp_len)
+        
+        return full_signal * envelope
+    
+    def generate_elrs_transmission(self, duration: float, packet_rate: int, 
+                                 power_level: int, flight_mode: str = 'manual') -> np.ndarray:
+        """Generate complete ELRS transmission with caching support"""
+        # Try to get from cache first
+        from .universal_signal_cache import get_universal_cache
+        cache = get_universal_cache()
+        
+        # Define parameters for caching
+        parameters = {
+            'band': self.band,
+            'packet_rate': packet_rate,
+            'duration': duration,
+            'flight_mode': flight_mode
+        }
+        
+        # Define generator function
+        def generate_signal(band, packet_rate, duration, flight_mode):
+            return self._generate_elrs_transmission_internal(duration, packet_rate, power_level, flight_mode)
+        
+        # Get from cache or generate
+        cached_path, sample_rate = cache.get_or_generate_signal(
+            signal_type='elrs',
+            protocol=f'elrs_{self.band}',
+            parameters=parameters,
+            generator_func=generate_signal
+        )
+        
+        # Load cached signal
+        with open(cached_path, 'rb') as f:
+            signal_bytes = f.read()
+        
+        # Convert to numpy array
+        signal_data = np.frombuffer(signal_bytes, dtype=np.int8).astype(np.float32) / 127.0
+        
+        return signal_data
+    
+    def _generate_elrs_transmission_internal(self, duration: float, packet_rate: int, 
+                                           power_level: int, flight_mode: str = 'manual') -> Tuple[np.ndarray, float]:
+        """Internal method to generate ELRS transmission (called by cache)"""
+        sample_rate = 2000000  # 2 MHz
+        
+        # Get packet timing
+        rate_config = self.PACKET_RATES.get(packet_rate, self.PACKET_RATES[100])
+        packet_interval = rate_config['interval']
+        
+        # Generate flight control patterns
+        control_patterns = self._generate_flight_control_pattern(flight_mode, duration)
         
         # Generate signal
-        total_samples = int(duration * sample_rate)
-        signal = np.zeros(total_samples)
+        num_samples = int(duration * sample_rate)
+        signal = np.zeros(num_samples)
         
-        # Simulate realistic RC control data
-        control_data = self._generate_control_data(duration, flight_mode)
+        # Generate packets
+        packet_count = int(duration / packet_interval)
+        current_sample = 0
         
-        for packet_num in range(num_packets):
-            packet_start_time = packet_num * packet_interval
-            packet_start_sample = int(packet_start_time * sample_rate)
-            
-            # Get current control data
-            current_control = {
-                'sequence': packet_num % 16,
-                'roll': control_data['roll'][packet_num % len(control_data['roll'])],
-                'pitch': control_data['pitch'][packet_num % len(control_data['pitch'])],
-                'throttle': control_data['throttle'][packet_num % len(control_data['throttle'])],
-                'yaw': control_data['yaw'][packet_num % len(control_data['yaw'])],
-                'aux_channels': [1500, 1200, 1800, 1500],
-                'telemetry_request': packet_num % 10 == 0  # Request telemetry every 10th packet
-            }
-            
-            # Encode packet
-            packet_data = self._encode_packet_data(current_control)
-            
-            # Generate preamble
-            preamble = self._generate_preamble(config, sample_rate)
-            
-            # Modulate packet
-            modulated_packet = self._modulate_packet(packet_data, config, sample_rate)
-            
-            # Combine preamble and packet
-            packet_signal = np.concatenate([preamble, modulated_packet])
-            
-            # Apply maximum power scaling for HackRF output
-            power_scale = 1.0  # Use maximum signal amplitude
-            packet_signal *= power_scale
-            
-            # Add to main signal (with bounds checking)
-            end_sample = min(packet_start_sample + len(packet_signal), total_samples)
-            actual_length = end_sample - packet_start_sample
-            signal[packet_start_sample:end_sample] = packet_signal[:actual_length]
-            
-            # Frequency hop for next packet
-            self.current_channel = (self.current_channel + 1) % len(self.channels)
+        print(f"Generating {packet_count} ELRS packets at {packet_rate}Hz...")
         
-        return signal
-    
-    def _generate_control_data(self, duration: float, flight_mode: str) -> Dict[str, List[int]]:
-        """Generate realistic RC control data for different flight modes"""
-        num_samples = int(duration * 50)  # 50 Hz control update rate
-        t = np.linspace(0, duration, num_samples)
-        
-        if flight_mode == 'manual':
-            # Manual flight with pilot inputs
-            roll = 1500 + 200 * np.sin(2 * np.pi * 0.5 * t) + 50 * np.random.randn(num_samples)
-            pitch = 1500 + 150 * np.sin(2 * np.pi * 0.3 * t) + 30 * np.random.randn(num_samples)
-            throttle = 1300 + 200 * np.sin(2 * np.pi * 0.1 * t) + 20 * np.random.randn(num_samples)
-            yaw = 1500 + 100 * np.sin(2 * np.pi * 0.7 * t) + 40 * np.random.randn(num_samples)
+        for i in range(packet_count):
+            # Get control values for this packet
+            control_idx = min(i, len(control_patterns) - 1)
+            channels = control_patterns[control_idx]
             
-        elif flight_mode == 'acro':
-            # Aggressive acrobatic flying
-            roll = 1500 + 400 * np.sin(2 * np.pi * 2 * t) * np.sin(2 * np.pi * 0.1 * t)
-            pitch = 1500 + 300 * np.sin(2 * np.pi * 1.5 * t) * np.cos(2 * np.pi * 0.15 * t)
-            throttle = 1000 + 800 * (0.5 + 0.5 * np.sin(2 * np.pi * 0.2 * t))
-            yaw = 1500 + 300 * np.sin(2 * np.pi * 3 * t)
+            # Create and modulate packet
+            packet = self._create_rc_packet(channels, i)
+            modulated = self._modulate_elrs_packet(packet, sample_rate)
             
-        elif flight_mode == 'stabilized':
-            # Gentle stabilized flight
-            roll = 1500 + 100 * np.sin(2 * np.pi * 0.2 * t) + 20 * np.random.randn(num_samples)
-            pitch = 1500 + 80 * np.sin(2 * np.pi * 0.25 * t) + 15 * np.random.randn(num_samples)
-            throttle = 1400 + 100 * np.sin(2 * np.pi * 0.05 * t) + 10 * np.random.randn(num_samples)
-            yaw = 1500 + 50 * np.sin(2 * np.pi * 0.1 * t) + 25 * np.random.randn(num_samples)
+            # Apply frequency hopping
+            hop_idx = i % len(self.hop_sequence)
+            channel_idx = self.hop_sequence[hop_idx]
             
-        else:  # Default to hover
-            # Hovering with small corrections
-            roll = 1500 + 30 * np.random.randn(num_samples)
-            pitch = 1500 + 30 * np.random.randn(num_samples)
-            throttle = 1500 + 50 * np.random.randn(num_samples)
-            yaw = 1500 + 20 * np.random.randn(num_samples)
+            # Add to signal (with bounds checking)
+            packet_samples = len(modulated)
+            if current_sample + packet_samples <= num_samples:
+                signal[current_sample:current_sample + packet_samples] = modulated
+            
+            current_sample += int(packet_interval * sample_rate)
         
-        # Clamp values to valid RC range
-        roll = np.clip(roll, 1000, 2000).astype(int).tolist()
-        pitch = np.clip(pitch, 1000, 2000).astype(int).tolist()
-        throttle = np.clip(throttle, 1000, 2000).astype(int).tolist()
-        yaw = np.clip(yaw, 1000, 2000).astype(int).tolist()
+        # Apply power scaling
+        power_scale = 10 ** (power_level / 20.0)
+        signal = signal * power_scale * 0.8  # Scale to 80% to avoid clipping
         
-        return {
-            'roll': roll,
-            'pitch': pitch,
-            'throttle': throttle,
-            'yaw': yaw
-        }
-    
-    def get_frequency_list(self) -> List[float]:
-        """Get list of frequencies used in this band"""
-        return self.channels
+        # Ensure signal is within [-1, 1]
+        max_val = np.max(np.abs(signal))
+        if max_val > 0:
+            signal = signal / max_val * 0.9
+        
+        return signal, sample_rate
     
     def get_band_info(self) -> Dict[str, Any]:
-        """Get information about current band"""
+        """Get information about current band configuration"""
         return {
             'band': self.band,
             'center_frequency': self.config['center_freq'],
-            'channels': self.channels,
+            'channels': self.config['channels'],
             'bandwidth': self.config['bandwidth'],
             'max_power': self.config['max_power'],
-            'num_channels': len(self.channels)
-        } 
+            'num_channels': len(self.config['channels'])
+        }
+    
+    def get_supported_packet_rates(self) -> List[int]:
+        """Get list of supported packet rates for this band"""
+        return list(self.PACKET_RATES.keys()) 

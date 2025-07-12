@@ -163,6 +163,10 @@ frontend.log
 *.dat
 *.raw
 
+# Signal cache (pre-generated signals)
+backend/signal_cache/
+signal_cache/
+
 # Temporary signal files
 temp_signal_*
 signal_output_*

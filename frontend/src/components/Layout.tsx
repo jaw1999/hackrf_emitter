@@ -7,7 +7,8 @@ import {
   SignalIcon,
   ExclamationTriangleIcon,
   SunIcon,
-  MoonIcon
+  MoonIcon,
+  BookOpenIcon
 } from '@heroicons/react/24/outline';
 import { SocketProvider, useSocket } from '../contexts/SocketContext';
 
@@ -22,6 +23,7 @@ const LayoutContent: React.FC<LayoutProps> = ({ children }) => {
   const navigation = [
     { name: 'Dashboard', href: '/', icon: HomeIcon },
     { name: 'Workflows', href: '/workflows', icon: SignalIcon },
+    { name: 'Library', href: '/library', icon: BookOpenIcon },
     { name: 'Device Info', href: '/device', icon: WifiIcon },
     { name: 'Settings', href: '/settings', icon: CogIcon },
   ];
