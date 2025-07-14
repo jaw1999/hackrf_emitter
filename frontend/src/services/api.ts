@@ -124,8 +124,8 @@ export const apiService = {
   // System status
   getStatus: async (): Promise<SystemStatus> => {
     return retryRequest(async () => {
-      const response = await api.get('/status');
-      return response.data;
+    const response = await api.get('/status');
+    return response.data;
     });
   },
 
@@ -140,49 +140,49 @@ export const apiService = {
   // Workflows
   getWorkflows: async (): Promise<Workflow[]> => {
     return retryRequest(async () => {
-      const response = await api.get('/workflows');
-      return response.data;
+    const response = await api.get('/workflows');
+    return response.data;
     });
   },
 
   startWorkflow: async (workflow: string, parameters: Record<string, any>): Promise<any> => {
     return retryRequest(async () => {
-      const response = await api.post('/start_workflow', {
-        workflow,
-        parameters,
-      });
-      return response.data;
+    const response = await api.post('/start_workflow', {
+      workflow,
+      parameters,
+    });
+    return response.data;
     });
   },
 
   stopWorkflow: async (): Promise<any> => {
     return retryRequest(async () => {
-      const response = await api.post('/stop_workflow');
-      return response.data;
+    const response = await api.post('/stop_workflow');
+    return response.data;
     });
   },
 
   // Device information
   getDeviceInfo: async (): Promise<DeviceInfo> => {
     return retryRequest(async () => {
-      const response = await api.get('/device_info');
-      return response.data;
+    const response = await api.get('/device_info');
+    return response.data;
     });
   },
 
   // Frequency bands
   getFrequencyBands: async (): Promise<FrequencyBand[]> => {
     return retryRequest(async () => {
-      const response = await api.get('/frequency_bands');
-      return response.data;
+    const response = await api.get('/frequency_bands');
+    return response.data;
     });
   },
 
   // Safety limits
   getSafetyLimits: async (): Promise<SafetyLimits> => {
     return retryRequest(async () => {
-      const response = await api.get('/safety_limits');
-      return response.data;
+    const response = await api.get('/safety_limits');
+    return response.data;
     });
   },
 

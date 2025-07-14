@@ -633,11 +633,11 @@ class EnhancedWorkflows:
                 },
                 'frequency': {
                     'type': 'float',
-                    'min': 1e9,
-                    'max': 10e9,
+                    'min': 100e6,
+                    'max': 6e9,
                     'default': 3e9,
                     'unit': 'Hz',
-                    'description': 'Radar operating frequency'
+                    'description': 'Radar operating frequency (up to 6 GHz)'
                 },
                 'prf': {
                     'type': 'int',
@@ -1164,19 +1164,62 @@ class EnhancedWorkflows:
         self._simple_frequency_hopping(start_freq, end_freq, hop_rate, duration)
     
     def _run_radar_simulation(self, parameters: Dict[str, Any]) -> None:
-        """Run radar simulation workflow"""
+        """Run radar simulation workflow with caching"""
         radar_type = parameters.get('radar_type', 'surveillance')
         frequency = parameters.get('frequency', 3e9)
         prf = parameters.get('prf', 1000)
-        duration = parameters.get('duration', 180)
+        duration = parameters.get('duration', 180)  # Use workflow default
         
-        print(f"Generating {radar_type} radar simulation...")
+        print(f"Loading cached {radar_type} radar simulation...")
         print(f"- Frequency: {frequency/1e9:.1f} GHz")
         print(f"- PRF: {prf} Hz")
+        print(f"- Duration: {duration}s")
         
-        # This would implement complex radar simulation
-        # For now, simplified implementation
-        self._simple_radar_simulation(frequency, prf, duration)
+        # Use universal cache for radar signals
+        from .universal_signal_cache import get_universal_cache
+        cache = get_universal_cache()
+        
+        # Define parameters for caching
+        parameters_cache = {
+            'radar_type': radar_type,
+            'frequency': frequency,
+            'prf': prf,
+            'duration': duration
+        }
+        
+        # Define generator function
+        def generate_signal(radar_type, frequency, prf, duration):
+            return self._generate_radar_signal(radar_type, frequency, prf, duration)
+        
+        # Get from cache or generate
+        cached_path, sample_rate = cache.get_or_generate_signal(
+            signal_type='radar',
+            protocol=f'radar_{radar_type}',
+            parameters=parameters_cache,
+            generator_func=generate_signal
+        )
+        
+        # Load cached signal
+        with open(cached_path, 'rb') as f:
+            signal_bytes = f.read()
+        
+        print(f"✅ Cached radar signal loaded instantly!")
+        print(f"   File size: {len(signal_bytes)/1e6:.1f} MB")
+        print(f"   Sample rate: {sample_rate/1e6:.1f} MHz")
+        
+        # Configure and start transmission with duration for looping support
+        self.hackrf.set_frequency(int(frequency))
+        self.hackrf.set_sample_rate(int(sample_rate))
+        self.hackrf.set_gain(47)
+        
+        self.hackrf.start_transmission(signal_bytes, int(frequency), int(sample_rate), 47, duration)
+        
+        # Wait for completion
+        start_time = time.time()
+        while time.time() - start_time < duration and not self.stop_flag.is_set():
+            time.sleep(0.1)
+        
+        self.hackrf.stop_transmission()
     
     def _create_raw_energy_workflows(self) -> List[Dict[str, Any]]:
         """Create raw energy workflows for all frequencies with 5MHz and 10MHz options"""
@@ -1298,6 +1341,32 @@ class EnhancedWorkflows:
             time.sleep(0.1)
         
         self.hackrf.stop_transmission()
+    
+    def _generate_radar_signal(self, radar_type: str, frequency: float, prf: int, duration: float) -> tuple:
+        """Generate radar signal for caching (called by cache)"""
+        sample_rate = 2000000  # 2 MHz
+        num_samples = int(duration * sample_rate)
+        
+        # Generate radar pulse train
+        pulse_interval = 1.0 / prf
+        pulse_samples = int(pulse_interval * sample_rate)
+        
+        # Create radar signal
+        signal = np.zeros(num_samples)
+        
+        # Generate pulses
+        for i in range(0, num_samples, pulse_samples):
+            if i + pulse_samples <= num_samples:
+                # Create a radar pulse (simplified)
+                pulse_width = int(0.0001 * sample_rate)  # 100 microseconds
+                if pulse_width < pulse_samples:
+                    # Add pulse at start of interval
+                    signal[i:i + pulse_width] = 0.8 * np.cos(2 * np.pi * 1000 * np.linspace(0, pulse_width/sample_rate, pulse_width))
+        
+        # Convert to 8-bit format
+        signal_8bit = ((signal + 1) * 127.5).astype(np.uint8)
+        
+        return signal_8bit.tobytes(), sample_rate
     
     def _simple_radar_simulation(self, frequency: float, prf: int, duration: float) -> None:
         """Simplified radar simulation implementation"""

@@ -1,65 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import {
-  PlayIcon,
-  StopIcon,
-  MagnifyingGlassIcon,
-  FunnelIcon,
-  SignalIcon,
-  SparklesIcon,
-  ChartBarIcon,
-  WifiIcon,
-  GlobeAltIcon,
-  BeakerIcon,
-  AcademicCapIcon,
-  LightBulbIcon,
-  ShieldCheckIcon,
-  ExclamationTriangleIcon,
-  BoltIcon,
-  FireIcon,
-  XMarkIcon,
-  ClockIcon,
-  CogIcon
-} from '@heroicons/react/24/outline';
+import { PlayIcon, StopIcon, MagnifyingGlassIcon, FunnelIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { useSocket } from '../contexts/SocketContext';
 import { apiService, Workflow, SystemStatus } from '../services/api';
 import WorkflowForm from '../components/WorkflowForm';
-
-// Category icons and colors
-const categoryConfig: { [key: string]: { icon: React.ComponentType<any>; color: string; bgColor: string } } = {
-  'RC Control': { icon: WifiIcon, color: 'text-blue-600', bgColor: 'bg-blue-50 dark:bg-blue-900/20' },
-  'ELRS Jamming': { icon: BoltIcon, color: 'text-yellow-600', bgColor: 'bg-yellow-50 dark:bg-yellow-900/20' },
-  'GNSS': { icon: GlobeAltIcon, color: 'text-green-600', bgColor: 'bg-green-50 dark:bg-green-900/20' },
-  'Aviation': { icon: SignalIcon, color: 'text-purple-600', bgColor: 'bg-purple-50 dark:bg-purple-900/20' },
-  'Advanced': { icon: SparklesIcon, color: 'text-indigo-600', bgColor: 'bg-indigo-50 dark:bg-indigo-900/20' },
-  'Radar': { icon: ChartBarIcon, color: 'text-red-600', bgColor: 'bg-red-50 dark:bg-red-900/20' },
-  'Raw Energy': { icon: FireIcon, color: 'text-orange-600', bgColor: 'bg-orange-50 dark:bg-orange-900/20' },
-  'Drone Video Jamming': { icon: FireIcon, color: 'text-pink-600', bgColor: 'bg-pink-50 dark:bg-pink-900/20' },
-  'Uncategorized': { icon: BeakerIcon, color: 'text-gray-600', bgColor: 'bg-gray-50 dark:bg-gray-900/20' }
-};
-
-// Complexity badges
-const complexityConfig: { [key: string]: { color: string; icon: React.ComponentType<any>; description: string } } = {
-  'Basic': { 
-    color: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 border-green-200 dark:border-green-700', 
-    icon: AcademicCapIcon,
-    description: 'Simple setup, safe parameters'
-  },
-  'Medium': { 
-    color: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 border-blue-200 dark:border-blue-700', 
-    icon: LightBulbIcon,
-    description: 'Intermediate level'
-  },
-  'High': { 
-    color: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200 border-orange-200 dark:border-orange-700', 
-    icon: ShieldCheckIcon,
-    description: 'Advanced - requires RF knowledge'
-  },
-  'Very High': { 
-    color: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 border-red-200 dark:border-red-700', 
-    icon: ExclamationTriangleIcon,
-    description: 'Expert level - use with caution'
-  }
-};
 
 const Workflows: React.FC = () => {
   const { isConnected, workflowStatus, currentWorkflow } = useSocket();
@@ -70,8 +13,6 @@ const Workflows: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-
-  // UI state
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
@@ -86,29 +27,24 @@ const Workflows: React.FC = () => {
         setWorkflows(workflowsData);
         setSystemStatus(statusData);
       } catch (error) {
-        console.error('Error fetching workflows:', error);
         setError('Failed to load workflows');
       } finally {
         setLoading(false);
       }
     };
-
     fetchData();
     const interval = setInterval(() => {
-      apiService.getStatus().then(setSystemStatus).catch(console.error);
+      apiService.getStatus().then(setSystemStatus).catch(() => {});
     }, 2000);
-
     return () => clearInterval(interval);
   }, []);
 
-  // Clear messages after 5 seconds
   useEffect(() => {
     if (success) {
       const timer = setTimeout(() => setSuccess(null), 5000);
       return () => clearTimeout(timer);
     }
   }, [success]);
-
   useEffect(() => {
     if (error && !error.includes('Failed to load')) {
       const timer = setTimeout(() => setError(null), 5000);
@@ -116,11 +52,8 @@ const Workflows: React.FC = () => {
     }
   }, [error]);
 
-  // Status tracking
-  const isTransmitting = workflowStatus === 'running' || 
-    (workflowStatus !== 'stopped' && systemStatus?.is_transmitting) || false;
-  const activeWorkflow = workflowStatus === 'stopped' ? null : 
-    (currentWorkflow || systemStatus?.current_workflow);
+  const isTransmitting = workflowStatus === 'running' || (workflowStatus !== 'stopped' && systemStatus?.is_transmitting) || false;
+  const activeWorkflow = workflowStatus === 'stopped' ? null : (currentWorkflow || systemStatus?.current_workflow);
 
   const handleStartWorkflow = async (workflowName: string, parameters: Record<string, any>) => {
     try {
@@ -130,60 +63,42 @@ const Workflows: React.FC = () => {
       setSelectedWorkflow(null);
       setSuccess(`Started ${workflowName} successfully!`);
     } catch (error) {
-      console.error('Error starting workflow:', error);
       setError(`Failed to start workflow: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
-
   const handleStopWorkflow = async () => {
     try {
       setError(null);
       await apiService.stopWorkflow();
       setSuccess('Workflow stopped successfully!');
     } catch (error) {
-      console.error('Error stopping workflow:', error);
       setError(`Failed to stop workflow: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
-
   const openWorkflowForm = (workflow: Workflow) => {
     setSelectedWorkflow(workflow);
     setShowForm(true);
   };
 
-  // Get unique categories
   const categories = ['all', ...Array.from(new Set(workflows.map(w => w.category || 'Uncategorized')))];
-
-  // Filter workflows
-  const filteredWorkflows = workflows.filter(workflow => {
-    const matchesSearch = workflow.display_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         workflow.description.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = selectedCategory === 'all' || workflow.category === selectedCategory;
-    
-    return matchesSearch && matchesCategory;
-  });
-
-  // Group workflows by category for stats
   const categoryStats = workflows.reduce((acc, workflow) => {
     const category = workflow.category || 'Uncategorized';
     acc[category] = (acc[category] || 0) + 1;
     return acc;
   }, {} as Record<string, number>);
-
-  const formatFrequency = (freq: number): string => {
-    if (freq >= 1e9) {
-      return `${(freq / 1e9).toFixed(2)} GHz`;
-    } else if (freq >= 1e6) {
-      return `${(freq / 1e6).toFixed(2)} MHz`;
-    } else if (freq >= 1e3) {
-      return `${(freq / 1e3).toFixed(2)} kHz`;
-    }
-    return `${freq} Hz`;
-  };
+  const filteredWorkflows = workflows.filter(workflow => {
+    const matchesSearch = workflow.display_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      workflow.description.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesCategory = selectedCategory === 'all' || workflow.category === selectedCategory;
+    return matchesSearch && matchesCategory;
+  });
 
   const getParameterDisplayValue = (key: string, param: any): string => {
     if (key === 'frequency' && typeof param.default === 'number') {
-      return formatFrequency(param.default);
+      if (param.default >= 1e9) return `${(param.default / 1e9).toFixed(2)} GHz`;
+      if (param.default >= 1e6) return `${(param.default / 1e6).toFixed(2)} MHz`;
+      if (param.default >= 1e3) return `${(param.default / 1e3).toFixed(2)} kHz`;
+      return `${param.default} Hz`;
     }
     if (key === 'sample_rate' && typeof param.default === 'number') {
       return `${(param.default / 1e6).toFixed(1)} MS/s`;
@@ -196,7 +111,6 @@ const Workflows: React.FC = () => {
     }
     return `${param.default}${param.unit ? ` ${param.unit}` : ''}`;
   };
-
   const getParameterFriendlyName = (key: string): string => {
     const nameMap: { [key: string]: string } = {
       'frequency': 'Frequency',
@@ -222,7 +136,6 @@ const Workflows: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="bg-gradient-to-r from-primary-50 to-blue-50 dark:from-primary-900 dark:to-blue-900 rounded-xl p-6">
         <div className="flex items-center justify-between">
           <div>
@@ -252,7 +165,6 @@ const Workflows: React.FC = () => {
         </div>
       </div>
 
-      {/* Status Messages */}
       {success && (
         <div className="rounded-lg bg-green-50 dark:bg-green-900 border-l-4 border-green-400 p-4">
           <div className="flex items-center">
@@ -265,7 +177,6 @@ const Workflows: React.FC = () => {
           </div>
         </div>
       )}
-
       {error && (
         <div className="rounded-lg bg-red-50 dark:bg-red-900 border-l-4 border-red-400 p-4">
           <div className="flex items-center">
@@ -278,8 +189,6 @@ const Workflows: React.FC = () => {
           </div>
         </div>
       )}
-
-      {/* Active Workflow Banner */}
       {isTransmitting && activeWorkflow && (
         <div className="rounded-xl bg-gradient-to-r from-primary-50 to-green-50 dark:from-primary-900 dark:to-green-900 border border-primary-200 dark:border-primary-700 p-4">
           <div className="flex items-center justify-between">
@@ -287,7 +196,7 @@ const Workflows: React.FC = () => {
               <div className="w-3 h-3 bg-primary-600 rounded-full animate-pulse"></div>
               <div>
                 <h3 className="font-semibold text-primary-800 dark:text-primary-200">
-                  📡 Transmission Active: {activeWorkflow}
+                  Transmission Active: {activeWorkflow}
                 </h3>
                 <p className="text-sm text-primary-600 dark:text-primary-400">
                   Started at {new Date().toLocaleTimeString()}
@@ -304,8 +213,6 @@ const Workflows: React.FC = () => {
           </div>
         </div>
       )}
-
-      {/* Connection Warning */}
       {!isConnected && (
         <div className="rounded-lg bg-red-50 dark:bg-red-900 border-l-4 border-red-400 p-4">
           <div className="flex items-center justify-between">
@@ -329,11 +236,8 @@ const Workflows: React.FC = () => {
           </div>
         </div>
       )}
-
-      {/* Search and Filters */}
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4">
         <div className="flex flex-col sm:flex-row gap-4">
-          {/* Search */}
           <div className="relative flex-1">
             <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
             <input
@@ -352,8 +256,6 @@ const Workflows: React.FC = () => {
               </button>
             )}
           </div>
-
-          {/* Category Filter */}
           <div className="relative sm:w-48">
             <FunnelIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
             <select
@@ -369,8 +271,6 @@ const Workflows: React.FC = () => {
               ))}
             </select>
           </div>
-
-          {/* View Mode Toggle */}
           <div className="flex border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
             <button
               onClick={() => setViewMode('grid')}
@@ -394,7 +294,6 @@ const Workflows: React.FC = () => {
             </button>
           </div>
         </div>
-        
         {(searchTerm || selectedCategory !== 'all') && (
           <div className="mt-4 flex items-center justify-between">
             <p className="text-sm text-gray-600 dark:text-gray-400">
@@ -412,8 +311,6 @@ const Workflows: React.FC = () => {
           </div>
         )}
       </div>
-
-      {/* Workflows Grid/List */}
       {filteredWorkflows.length === 0 ? (
         <div className="text-center py-16 bg-white dark:bg-gray-800 rounded-xl shadow-sm">
           <MagnifyingGlassIcon className="mx-auto h-12 w-12 text-gray-400 mb-4" />
@@ -438,14 +335,7 @@ const Workflows: React.FC = () => {
         }>
           {filteredWorkflows.map(workflow => {
             const category = workflow.category || 'Uncategorized';
-            const categoryData = categoryConfig[category] || categoryConfig['Uncategorized'];
-            const CategoryIcon = categoryData.icon;
-            const complexityData = complexityConfig[workflow.complexity || 'Basic'];
-            const ComplexityIcon = complexityData.icon;
-            
-            // Get key parameters for preview
             const keyParams = Object.entries(workflow.parameters).slice(0, 2);
-            
             return (
               <div
                 key={workflow.name}
@@ -454,33 +344,21 @@ const Workflows: React.FC = () => {
                 }`}
               >
                 {viewMode === 'grid' ? (
-                  // Grid View
                   <div className="space-y-4">
-                    {/* Header */}
                     <div className="flex items-start justify-between">
-                      <div className="flex items-center space-x-3">
-                        <div className={`p-2 rounded-lg ${categoryData.bgColor}`}>
-                          <CategoryIcon className={`h-5 w-5 ${categoryData.color}`} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <h3 className="font-semibold text-gray-900 dark:text-gray-100 text-base leading-tight">
-                            {workflow.display_name}
-                          </h3>
-                          <p className="text-sm text-gray-500 dark:text-gray-400">{category}</p>
-                        </div>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-semibold text-gray-900 dark:text-gray-100 text-base leading-tight">
+                          {workflow.display_name}
+                        </h3>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">{category}</p>
                       </div>
-                      <div className={`px-2 py-1 text-xs font-medium rounded-full border ${complexityData.color} flex items-center space-x-1`}>
-                        <ComplexityIcon className="h-3 w-3" />
-                        <span>{workflow.complexity || 'Basic'}</span>
+                      <div className="px-2 py-1 text-xs font-medium rounded-full border bg-gray-100 dark:bg-gray-900 text-gray-700 dark:text-gray-200">
+                        {workflow.complexity || 'Basic'}
                       </div>
                     </div>
-
-                    {/* Description */}
                     <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
                       {workflow.description}
                     </p>
-
-                    {/* Key Parameters */}
                     {keyParams.length > 0 && (
                       <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-3">
                         <div className="space-y-2">
@@ -502,8 +380,6 @@ const Workflows: React.FC = () => {
                         </div>
                       </div>
                     )}
-
-                    {/* Action Button */}
                     <button
                       onClick={() => openWorkflowForm(workflow)}
                       disabled={!isConnected || isTransmitting}
@@ -514,20 +390,14 @@ const Workflows: React.FC = () => {
                     </button>
                   </div>
                 ) : (
-                  // List View
                   <div className="flex items-center space-x-4 w-full">
-                    <div className={`p-2 rounded-lg ${categoryData.bgColor}`}>
-                      <CategoryIcon className={`h-5 w-5 ${categoryData.color}`} />
-                    </div>
-                    
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center space-x-3 mb-1">
                         <h3 className="font-semibold text-gray-900 dark:text-gray-100">
                           {workflow.display_name}
                         </h3>
-                        <div className={`px-2 py-1 text-xs font-medium rounded-full border ${complexityData.color} flex items-center space-x-1`}>
-                          <ComplexityIcon className="h-3 w-3" />
-                          <span>{workflow.complexity || 'Basic'}</span>
+                        <div className="px-2 py-1 text-xs font-medium rounded-full border bg-gray-100 dark:bg-gray-900 text-gray-700 dark:text-gray-200">
+                          {workflow.complexity || 'Basic'}
                         </div>
                       </div>
                       <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">{workflow.description}</p>
@@ -539,7 +409,6 @@ const Workflows: React.FC = () => {
                         <span>• {Object.keys(workflow.parameters).length} parameters</span>
                       </div>
                     </div>
-                    
                     <button
                       onClick={() => openWorkflowForm(workflow)}
                       disabled={!isConnected || isTransmitting}
@@ -555,35 +424,25 @@ const Workflows: React.FC = () => {
           })}
         </div>
       )}
-
-      {/* Workflow Form Modal */}
       {showForm && selectedWorkflow && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6">
               <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center space-x-3">
-                  <div className="p-2 bg-primary-100 dark:bg-primary-900 rounded-lg">
-                    <CogIcon className="h-6 w-6 text-primary-600 dark:text-primary-400" />
-                  </div>
-                  <div>
-                    <h2 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">
-                      Configure {selectedWorkflow.display_name}
-                    </h2>
-                    <p className="text-gray-600 dark:text-gray-400 mt-1">
-                      {selectedWorkflow.description}
-                    </p>
-                    {selectedWorkflow.complexity && (
-                      <div className="flex items-center space-x-2 mt-2">
-                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${complexityConfig[selectedWorkflow.complexity].color}`}>
-                          {selectedWorkflow.complexity} Level
-                        </span>
-                        <span className="text-xs text-gray-500 dark:text-gray-400">
-                          {complexityConfig[selectedWorkflow.complexity].description}
-                        </span>
-                      </div>
-                    )}
-                  </div>
+                <div>
+                  <h2 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">
+                    Configure {selectedWorkflow.display_name}
+                  </h2>
+                  <p className="text-gray-600 dark:text-gray-400 mt-1">
+                    {selectedWorkflow.description}
+                  </p>
+                  {selectedWorkflow.complexity && (
+                    <div className="flex items-center space-x-2 mt-2">
+                      <span className="px-2 py-1 text-xs font-medium rounded-full bg-gray-100 dark:bg-gray-900 text-gray-700 dark:text-gray-200">
+                        {selectedWorkflow.complexity} Level
+                      </span>
+                    </div>
+                  )}
                 </div>
                 <button
                   onClick={() => setShowForm(false)}
@@ -592,7 +451,6 @@ const Workflows: React.FC = () => {
                   <XMarkIcon className="h-6 w-6" />
                 </button>
               </div>
-
               <WorkflowForm
                 workflow={selectedWorkflow}
                 onSubmit={handleStartWorkflow}

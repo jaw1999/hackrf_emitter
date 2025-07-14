@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { PlayIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import { Workflow } from '../services/api';
 
 interface WorkflowFormProps {
@@ -14,7 +13,6 @@ const WorkflowForm: React.FC<WorkflowFormProps> = ({ workflow, onSubmit, onCance
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    // Initialize parameters with defaults
     const initialParams: Record<string, any> = {};
     Object.entries(workflow.parameters).forEach(([key, param]) => {
       const p = param as any;
@@ -34,12 +32,7 @@ const WorkflowForm: React.FC<WorkflowFormProps> = ({ workflow, onSubmit, onCance
   }, [workflow]);
 
   const handleParameterChange = (key: string, value: any) => {
-    setParameters(prev => ({
-      ...prev,
-      [key]: value
-    }));
-    
-    // Clear error for this parameter
+    setParameters(prev => ({ ...prev, [key]: value }));
     if (errors[key]) {
       setErrors(prev => {
         const newErrors = { ...prev };
@@ -51,14 +44,11 @@ const WorkflowForm: React.FC<WorkflowFormProps> = ({ workflow, onSubmit, onCance
 
   const validateParameters = (): boolean => {
     const newErrors: Record<string, string> = {};
-
     Object.entries(workflow.parameters).forEach(([key, param]) => {
       const value = parameters[key];
       const p = param as any;
-      
       if (p.type === 'float' || p.type === 'int') {
         const numValue = parseFloat(value);
-        
         if (isNaN(numValue)) {
           newErrors[key] = 'Must be a valid number';
         } else if (p.min !== undefined && numValue < p.min) {
@@ -72,23 +62,17 @@ const WorkflowForm: React.FC<WorkflowFormProps> = ({ workflow, onSubmit, onCance
         }
       }
     });
-
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!validateParameters()) {
-      return;
-    }
-
+    if (!validateParameters()) return;
     setLoading(true);
     try {
       await onSubmit(workflow.name, parameters);
     } catch (error) {
-      console.error('Error submitting workflow:', error);
     } finally {
       setLoading(false);
     }
@@ -119,7 +103,6 @@ const WorkflowForm: React.FC<WorkflowFormProps> = ({ workflow, onSubmit, onCance
   const renderParameterInput = (key: string, param: any) => {
     const value = parameters[key];
     const error = errors[key];
-
     if (param.type === 'float' || param.type === 'int') {
       return (
         <div key={key} className="space-y-1">
@@ -143,7 +126,6 @@ const WorkflowForm: React.FC<WorkflowFormProps> = ({ workflow, onSubmit, onCance
         </div>
       );
     }
-
     if (param.type === 'select') {
       return (
         <div key={key} className="space-y-1">
@@ -166,12 +148,10 @@ const WorkflowForm: React.FC<WorkflowFormProps> = ({ workflow, onSubmit, onCance
                   </option>
                 );
               } else {
-                // Handle different types of options (string, number, etc.)
                 const optionValue = String(option);
                 const displayText = typeof option === 'string' 
                   ? option.charAt(0).toUpperCase() + option.slice(1).replace(/_/g, ' ')
                   : optionValue;
-                
                 return (
                   <option key={optionValue} value={optionValue}>
                     {displayText}
@@ -187,7 +167,6 @@ const WorkflowForm: React.FC<WorkflowFormProps> = ({ workflow, onSubmit, onCance
         </div>
       );
     }
-
     if (param.type === 'string') {
       return (
         <div key={key} className="space-y-1">
@@ -207,7 +186,6 @@ const WorkflowForm: React.FC<WorkflowFormProps> = ({ workflow, onSubmit, onCance
         </div>
       );
     }
-
     if (param.type === 'bool') {
       return (
         <div key={key} className="space-y-1">
@@ -228,27 +206,20 @@ const WorkflowForm: React.FC<WorkflowFormProps> = ({ workflow, onSubmit, onCance
         </div>
       );
     }
-
     return null;
   };
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      {/* Safety Information */}
       <div className="rounded-lg bg-yellow-50 dark:bg-yellow-900 border border-yellow-200 dark:border-yellow-700 p-4">
-        <div className="flex items-start space-x-3">
-          <ExclamationTriangleIcon className="h-5 w-5 text-yellow-600 dark:text-yellow-400 mt-0.5" />
-          <div>
-            <h3 className="text-sm font-medium text-yellow-800 dark:text-yellow-200">Safety Information</h3>
-            <p className="mt-1 text-sm text-yellow-700 dark:text-yellow-300">
-              Please ensure your parameters comply with local RF regulations. 
-              Verify transmission parameters before starting.
-            </p>
-          </div>
+        <div>
+          <h3 className="text-sm font-medium text-yellow-800 dark:text-yellow-200">Safety Information</h3>
+          <p className="mt-1 text-sm text-yellow-700 dark:text-yellow-300">
+            Please ensure your parameters comply with local RF regulations. 
+            Verify transmission parameters before starting.
+          </p>
         </div>
       </div>
-      
-      {/* Parameters */}
       <div className="space-y-4">
         <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">Parameters</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -257,8 +228,6 @@ const WorkflowForm: React.FC<WorkflowFormProps> = ({ workflow, onSubmit, onCance
           )}
         </div>
       </div>
-
-      {/* Actions */}
       <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200 dark:border-gray-700">
         <button
           type="button"
@@ -272,7 +241,6 @@ const WorkflowForm: React.FC<WorkflowFormProps> = ({ workflow, onSubmit, onCance
           disabled={loading || Object.keys(errors).length > 0}
           className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
         >
-          <PlayIcon className="h-4 w-4" />
           <span>{loading ? 'Starting...' : `Start ${workflow.display_name}`}</span>
         </button>
       </div>
