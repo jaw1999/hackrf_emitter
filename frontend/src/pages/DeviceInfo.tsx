@@ -11,30 +11,49 @@ const DeviceInfoPage: React.FC = () => {
   const [frequencyBands, setFrequencyBands] = useState<FrequencyBand[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [lastUpdateTime, setLastUpdateTime] = useState<string>('');
 
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchDeviceInfo = async () => {
       try {
-        const [deviceData, bandsData] = await Promise.all([
-          apiService.getDeviceInfo(),
-          apiService.getFrequencyBands()
-        ]);
-        setDeviceInfo(deviceData);
-        setFrequencyBands(bandsData);
+        const info = await apiService.getDeviceInfo();
+        setDeviceInfo(info);
+        setLastUpdateTime(new Date().toLocaleTimeString());
       } catch (error) {
         console.error('Error fetching device info:', error);
-        setError('Failed to load device information');
+        setError('Failed to fetch device information');
       } finally {
         setLoading(false);
       }
     };
 
-    fetchData();
+    fetchDeviceInfo();
     const interval = setInterval(() => {
-      apiService.getDeviceInfo().then(setDeviceInfo);
-    }, 3000);
+      apiService.getDeviceInfo().then(setDeviceInfo).catch(console.error);
+    }, 2000);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+    };
+  }, []);
+
+  useEffect(() => {
+    const fetchFrequencyBands = async () => {
+      try {
+        const bands = await apiService.getFrequencyBands();
+        setFrequencyBands(bands);
+      } catch (error) {
+        console.error('Error fetching frequency bands:', error);
+        setError('Failed to load frequency bands');
+      }
+    };
+
+    fetchFrequencyBands();
+    const bandsInterval = setInterval(fetchFrequencyBands, 3000);
+
+    return () => {
+      clearInterval(bandsInterval);
+    };
   }, []);
 
   const formatFrequency = (freq: number): string => {

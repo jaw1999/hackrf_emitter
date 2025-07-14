@@ -3,23 +3,24 @@ import { Routes, Route } from 'react-router-dom';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import Workflows from './pages/Workflows';
-import DeviceInfoPage from './pages/DeviceInfo';
-import Settings from './pages/Settings';
 import Library from './pages/Library';
+import DeviceInfo from './pages/DeviceInfo';
+import Settings from './pages/Settings';
+import ErrorBoundary from './components/ErrorBoundary';
 
 function App() {
   return (
-    <div className="App">
+    <ErrorBoundary>
       <Layout>
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/workflows" element={<Workflows />} />
-          <Route path="/device" element={<DeviceInfoPage />} />
-          <Route path="/settings" element={<Settings />} />
           <Route path="/library" element={<Library />} />
+          <Route path="/device" element={<DeviceInfo />} />
+          <Route path="/settings" element={<Settings />} />
         </Routes>
       </Layout>
-    </div>
+    </ErrorBoundary>
   );
 }
 

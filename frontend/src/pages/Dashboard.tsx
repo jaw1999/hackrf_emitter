@@ -43,7 +43,9 @@ const Dashboard: React.FC = () => {
     fetchData();
     const interval = setInterval(fetchData, 2000); // Refresh every 2 seconds
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+    };
   }, []);
 
   // Clear success/error messages after 5 seconds
